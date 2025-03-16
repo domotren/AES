@@ -1,23 +1,19 @@
 
 #include "aes128.h"
 
-const uint8_t rijndael_r_con[11] = 
-{
-        0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
-};
+const uint8_t rijndael_r_con[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10,
+                                    0x20, 0x40, 0x80, 0x1b, 0x36};
 
 // Galois Field multiply
 static uint8_t gf_multiply(uint8_t a, uint8_t b)
 {
         uint8_t res = 0; 
         uint8_t i;
-        for (i = 0; i < 8; ++i)
-        {
-                if (b & 1)
-                {
+        for (i = 0; i < 8; ++i) {
+                if (b & 1) {
                         res ^= a;
-                }                       
-                a = (a & 0x80? 0x1b:0) ^ (a << 1);
+                }
+                a = (a & 0x80 ? 0x1b : 0) ^ (a << 1);
                 b >>= 1;
         }
 
@@ -31,16 +27,14 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
 
         memcpy(round_key, key, N_AES_KEY_SIZE);
 
-        for (i = N_AES_KEY_SIZE; i < N_AES_KEY_EXPAND_SIZE; i += 4)
-        {
+        for (i = N_AES_KEY_SIZE; i < N_AES_KEY_EXPAND_SIZE; i += 4) {
                 j = (i - 4);
                 tmp[0] = *(round_key + j + 0);
                 tmp[1] = *(round_key + j + 1);
                 tmp[2] = *(round_key + j + 2);
                 tmp[3] = *(round_key + j + 3);
 
-                if (i % N_AES_KEY_SIZE == 0)
-                {
+                if (i % N_AES_KEY_SIZE == 0) {
                         const uint8_t u8tmp = tmp[0];
                         tmp[0] = tmp[1];
                         tmp[1] = tmp[2];
@@ -52,7 +46,7 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
                         tmp[2] = rijndael_s_box[(tmp[2])];
                         tmp[3] = rijndael_s_box[(tmp[3])];
 
-                        tmp[0] ^= rijndael_r_con[(i/N_AES_KEY_SIZE)];
+                        tmp[0] ^= rijndael_r_con[(i / N_AES_KEY_SIZE)];
                 }
 
                 j = (i - N_AES_KEY_SIZE);
@@ -66,8 +60,7 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
 static void aes_step_sub_bytes(uint8_t *state)
 {
         uint8_t i;
-        for (i = 0; i < N_AES_STATE_SIZE; ++i)
-        {
+        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
                 *(state + i) = rijndael_s_box[*(state + i)];
         }
 }
@@ -106,40 +99,30 @@ static void aes_step_mix_columns(uint8_t *state)
         3 1 1 2
         */
         uint8_t i, j;
- 
-        for (i = 0; i < 4; ++i)
-        {
+
+        for (i = 0; i < 4; ++i) {
                 j = (i * 4);
                 tmp[0] = *(state + j);
                 tmp[1] = *(state + j + 1);
                 tmp[2] = *(state + j + 2);
                 tmp[3] = *(state + j + 3);
 
-                *(state + j) = gf_multiply(0x02, tmp[0]) ^ \
-                                        gf_multiply(0x03, tmp[1]) ^ \
-                                        tmp[2] ^ \
-                                        tmp[3];
-                *(state + j + 1) = tmp[0] ^ \
-                                        gf_multiply(0x02, tmp[1]) ^ \
-                                        gf_multiply(0x03, tmp[2]) ^ \
-                                        tmp[3];
-                *(state + j + 2) = tmp[0] ^ \
-                                        tmp[1] ^ \
-                                        gf_multiply(0x02, tmp[2]) ^ \
-                                        gf_multiply(0x03, tmp[3]);
-                *(state + j + 3) = gf_multiply(0x03, tmp[0]) ^ \
-                                        tmp[1] ^ \
-                                        tmp[2] ^ \
-                                        gf_multiply(0x02, tmp[3]);
+                *(state + j) = gf_multiply(0x02, tmp[0]) ^
+                               gf_multiply(0x03, tmp[1]) ^ tmp[2] ^ tmp[3];
+                *(state + j + 1) = tmp[0] ^ gf_multiply(0x02, tmp[1]) ^
+                                   gf_multiply(0x03, tmp[2]) ^ tmp[3];
+                *(state + j + 2) = tmp[0] ^ tmp[1] ^ gf_multiply(0x02, tmp[2]) ^
+                                   gf_multiply(0x03, tmp[3]);
+                *(state + j + 3) = gf_multiply(0x03, tmp[0]) ^ tmp[1] ^ tmp[2] ^
+                                   gf_multiply(0x02, tmp[3]);
         }
 }
 
 static void aes_step_add_round_key(uint8_t *state, uint8_t *round_key)
 {
         uint8_t i;
-        
-        for (i = 0; i<N_AES_STATE_SIZE; ++i)
-        {
+
+        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
                 *(state + i) ^= *(round_key + i);
         }
 }
@@ -147,8 +130,7 @@ static void aes_step_add_round_key(uint8_t *state, uint8_t *round_key)
 static void aes_step_inv_sub_bytes(uint8_t *state)
 {
         uint8_t i;
-        for (i = 0; i < N_AES_STATE_SIZE; ++i)
-        {
+        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
                 *(state + i) = rijndael_inverse_s_box[*(state + i)];
         }
 }
@@ -169,7 +151,7 @@ static void aes_step_inv_shift_rows(uint8_t *state)
         u8tmp = *(state + 6);
         *(state + 6) = *(state + 14);
         *(state + 14) = u8tmp;
-        
+
         u8tmp = *(state + 3);
         *(state + 3) = *(state + 7);
         *(state + 7) = *(state + 11);
@@ -187,31 +169,26 @@ static void aes_step_inv_mix_columns(uint8_t *state)
         B D 9 E
         */
         uint8_t i, j;
- 
-        for (i = 0; i < 4; ++i)
-        {
+
+        for (i = 0; i < 4; ++i) {
                 j = (i * 4);
                 tmp[0] = *(state + j);
                 tmp[1] = *(state + j + 1);
                 tmp[2] = *(state + j + 2);
                 tmp[3] = *(state + j + 3);
 
-                *(state + j) = gf_multiply(0x0e, tmp[0]) ^ \
-                                        gf_multiply(0x0b, tmp[1]) ^ \
-                                        gf_multiply(0x0d, tmp[2]) ^ \
-                                        gf_multiply(0x09, tmp[3]);
-                *(state + j + 1) = gf_multiply(0x09, tmp[0]) ^ \
-                                        gf_multiply(0x0e, tmp[1]) ^ \
-                                        gf_multiply(0x0b, tmp[2]) ^ \
-                                        gf_multiply(0x0d, tmp[3]);
-                *(state + j + 2) = gf_multiply(0x0d, tmp[0]) ^ \
-                                        gf_multiply(0x09, tmp[1]) ^ \
-                                        gf_multiply(0x0e, tmp[2]) ^ \
-                                        gf_multiply(0x0b, tmp[3]);
-                *(state + j + 3) = gf_multiply(0x0b, tmp[0]) ^ \
-                                        gf_multiply(0x0d, tmp[1]) ^ \
-                                        gf_multiply(0x09, tmp[2]) ^ \
-                                        gf_multiply(0x0e, tmp[3]);
+                *(state + j) =
+                    gf_multiply(0x0e, tmp[0]) ^ gf_multiply(0x0b, tmp[1]) ^
+                    gf_multiply(0x0d, tmp[2]) ^ gf_multiply(0x09, tmp[3]);
+                *(state + j + 1) =
+                    gf_multiply(0x09, tmp[0]) ^ gf_multiply(0x0e, tmp[1]) ^
+                    gf_multiply(0x0b, tmp[2]) ^ gf_multiply(0x0d, tmp[3]);
+                *(state + j + 2) =
+                    gf_multiply(0x0d, tmp[0]) ^ gf_multiply(0x09, tmp[1]) ^
+                    gf_multiply(0x0e, tmp[2]) ^ gf_multiply(0x0b, tmp[3]);
+                *(state + j + 3) =
+                    gf_multiply(0x0b, tmp[0]) ^ gf_multiply(0x0d, tmp[1]) ^
+                    gf_multiply(0x09, tmp[2]) ^ gf_multiply(0x0e, tmp[3]);
         }
 }
 
@@ -229,16 +206,12 @@ static void pkcs7_unpadding(uint8_t *data, uint8_t *data_size, uint8_t block_siz
         uint8_t final_data = *(data + block_size - 1);
         uint8_t i;
 
-        if ((final_data == 0x00) 
-                || (final_data > block_size))
-        {
+        if ((final_data == 0x00) || (final_data > block_size)) {
                 return;
         }
 
-        for (i = 0; i<final_data; ++i)
-        {
-                if (*(data + block_size - 1 - i) != final_data)
-                {
+        for (i = 0; i < final_data; ++i) {
+                if (*(data + block_size - 1 - i) != final_data) {
                         return;
                 }
         }
@@ -263,20 +236,19 @@ void aes_encryption(uint8_t *plain_text, uint8_t *round_key, uint8_t *output)
 
         aes_step_add_round_key(output, round_key);
 
-        for (i = 0; i < N_AES_ROUND; ++i)
-        {
+        for (i = 0; i < N_AES_ROUND; ++i) {
                 round_idx = i + 1;
 
                 aes_step_sub_bytes(output);
 
                 aes_step_shift_rows(output);
 
-                if (round_idx < N_AES_ROUND)
-                {
+                if (round_idx < N_AES_ROUND) {
                         aes_step_mix_columns(output);
                 }
 
-                aes_step_add_round_key(output, (round_key + (round_idx * N_AES_KEY_SIZE)));
+                aes_step_add_round_key(
+                    output, (round_key + (round_idx * N_AES_KEY_SIZE)));
         }
 }
 
@@ -287,20 +259,19 @@ void aes_decryption(uint8_t *cipher_text, uint8_t *round_key, uint8_t *output)
 
         memcpy(output, cipher_text, N_AES_STATE_SIZE);
 
-        aes_step_add_round_key(output, (round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
+        aes_step_add_round_key(output,
+                               (round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
 
-        for (i = N_AES_ROUND; i > 0; --i)
-        {
+        for (i = N_AES_ROUND; i > 0; --i) {
                 round_idx = i - 1;
 
                 aes_step_inv_shift_rows(output);
                 aes_step_inv_sub_bytes(output);
-                aes_step_add_round_key(output, (round_key + (round_idx * N_AES_KEY_SIZE)));
+                aes_step_add_round_key(
+                    output, (round_key + (round_idx * N_AES_KEY_SIZE)));
 
-                if (round_idx > 0)
-                {
+                if (round_idx > 0) {
                         aes_step_inv_mix_columns(output);
                 }
         }
 }
-
