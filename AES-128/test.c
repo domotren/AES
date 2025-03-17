@@ -6,6 +6,28 @@
 
 uint8_t aes_key[N_AES_KEY_SIZE];
 
+static void print_hex_array(const char *label, uint8_t *data,
+                            uint8_t n_len)
+{
+        uint8_t i;
+
+        printf("%s: \n\t", label);
+        for (i = 0; i < n_len; ++i) {
+                printf("0x%02x ", data[i]);
+        }
+        printf("\n");
+}
+
+static void compare_result(const char *item, uint8_t *data,
+                           uint8_t *src, uint8_t n_len)
+{
+        printf("-- %s ", item);
+        if (memcmp(data, src, n_len) == 0)
+                printf("PASS!\n");
+        else
+                printf("FAIL!\n");
+}
+
 int main(void)
 {
         /* AES128 ECB test vectors */
@@ -39,7 +61,6 @@ int main(void)
 
         uint8_t tmp_plain_text[N_AES_STATE_SIZE];
         uint8_t tmp_output[N_AES_STATE_SIZE];
-        uint8_t i;
 
         printf("=== AES-128 ECB test ===\n");
         memcpy(aes_key, vector_key, N_AES_KEY_SIZE);
@@ -48,118 +69,70 @@ int main(void)
         printf("\n[TEST 1]\n");
         memcpy(tmp_plain_text, vector_1_text, N_AES_STATE_SIZE);
 
-        printf("plain text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_plain_text[i]);
-        }
-        printf("\n");
+        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
 
         aes_encryption(tmp_plain_text, tmp_output);
 
-        printf("encryption text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_output[i]);
-        }
-        printf("\n");
+        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
 
-        if (memcmp(tmp_output, vector_1_cipher, N_AES_STATE_SIZE) == 0)
-                printf("-- Encryption PASS!\n");
-        else
-                printf("-- Encryption FAIL!\n");
+        compare_result("Encryption", tmp_output, vector_1_cipher,
+                       N_AES_STATE_SIZE);
 
         aes_decryption(tmp_output, tmp_output);
 
-        if (memcmp(tmp_output, vector_1_text, N_AES_STATE_SIZE) == 0)
-                printf("-- Decryption PASS!\n");
-        else
-                printf("-- Decryption FAIL!\n");
+        compare_result("Decryption", tmp_output, vector_1_text,
+                       N_AES_STATE_SIZE);
 
         printf("\n[TEST 2]\n");
         memcpy(tmp_plain_text, vector_2_text, N_AES_STATE_SIZE);
 
-        printf("plain text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_plain_text[i]);
-        }
-        printf("\n");
+        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
 
         aes_encryption(tmp_plain_text, tmp_output);
 
-        printf("encryption text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_output[i]);
-        }
-        printf("\n");
+        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
 
-        if (memcmp(tmp_output, vector_2_cipher, N_AES_STATE_SIZE) == 0)
-                printf("-- Encryption PASS!\n");
-        else
-                printf("-- Encryption FAIL!\n");
+        compare_result("Encryption", tmp_output, vector_2_cipher,
+                       N_AES_STATE_SIZE);
 
         aes_decryption(tmp_output, tmp_output);
 
-        if (memcmp(tmp_output, vector_2_text, N_AES_STATE_SIZE) == 0)
-                printf("-- Decryption PASS!\n");
-        else
-                printf("-- Decryption FAIL!\n");
+        compare_result("Decryption", tmp_output, vector_2_text,
+                       N_AES_STATE_SIZE);
 
         printf("\n[TEST 3]\n");
         memcpy(tmp_plain_text, vector_3_text, N_AES_STATE_SIZE);
 
-        printf("plain text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_plain_text[i]);
-        }
-        printf("\n");
+        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
 
         aes_encryption(tmp_plain_text, tmp_output);
 
-        printf("encryption text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_output[i]);
-        }
-        printf("\n");
+        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
 
-        if (memcmp(tmp_output, vector_3_cipher, N_AES_STATE_SIZE) == 0)
-                printf("-- Encryption PASS!\n");
-        else
-                printf("-- Encryption FAIL!\n");
+        compare_result("Encryption", tmp_output, vector_3_cipher,
+                       N_AES_STATE_SIZE);
 
         aes_decryption(tmp_output, tmp_output);
 
-        if (memcmp(tmp_output, vector_3_text, N_AES_STATE_SIZE) == 0)
-                printf("-- Decryption PASS!\n");
-        else
-                printf("-- Decryption FAIL!\n");
+        compare_result("Decryption", tmp_output, vector_3_text,
+                       N_AES_STATE_SIZE);
 
         printf("\n[TEST 4]\n");
         memcpy(tmp_plain_text, vector_4_text, N_AES_STATE_SIZE);
 
-        printf("plain text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_plain_text[i]);
-        }
-        printf("\n");
+        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
 
         aes_encryption(tmp_plain_text, tmp_output);
 
-        printf("encryption text: \n\t");
-        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
-                printf("0x%02x ", tmp_output[i]);
-        }
-        printf("\n");
+        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
 
-        if (memcmp(tmp_output, vector_4_cipher, N_AES_STATE_SIZE) == 0)
-                printf("-- Encryption PASS!\n");
-        else
-                printf("-- Encryption FAIL!\n");
+        compare_result("Encryption", tmp_output, vector_4_cipher,
+                       N_AES_STATE_SIZE);
 
         aes_decryption(tmp_output, tmp_output);
 
-        if (memcmp(tmp_output, vector_4_text, N_AES_STATE_SIZE) == 0)
-                printf("-- Decryption PASS!\n");
-        else
-                printf("-- Decryption FAIL!\n");
+        compare_result("Decryption", tmp_output, vector_4_text,
+                       N_AES_STATE_SIZE);
 
         return 0;
 }
