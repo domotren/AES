@@ -4,6 +4,8 @@
 const uint8_t rijndael_r_con[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10,
                                     0x20, 0x40, 0x80, 0x1b, 0x36};
 
+static uint8_t aes_round_key[N_AES_KEY_EXPAND_SIZE];
+
 // Galois Field multiply
 static uint8_t gf_multiply(uint8_t a, uint8_t b)
 {
@@ -221,20 +223,19 @@ static void pkcs7_unpadding(uint8_t *data, uint8_t *data_size, uint8_t block_siz
 
 #endif // FEATURE_PKCS7_ENABLE
 
-
-void aes_init(uint8_t *round_key, uint8_t *key)
+void aes_init(uint8_t *key)
 {
-        aes_key_expansion(round_key, key);
+        aes_key_expansion(aes_round_key, key);
 }
 
-void aes_encryption(uint8_t *plain_text, uint8_t *round_key, uint8_t *output)
+void aes_encryption(uint8_t *plain_text, uint8_t *output)
 {
         uint8_t i;
         uint8_t round_idx;
 
         memcpy(output, plain_text, N_AES_STATE_SIZE);
 
-        aes_step_add_round_key(output, round_key);
+        aes_step_add_round_key(output, aes_round_key);
 
         for (i = 0; i < N_AES_ROUND; ++i) {
                 round_idx = i + 1;
@@ -248,19 +249,19 @@ void aes_encryption(uint8_t *plain_text, uint8_t *round_key, uint8_t *output)
                 }
 
                 aes_step_add_round_key(
-                    output, (round_key + (round_idx * N_AES_KEY_SIZE)));
+                    output, (aes_round_key + (round_idx * N_AES_KEY_SIZE)));
         }
 }
 
-void aes_decryption(uint8_t *cipher_text, uint8_t *round_key, uint8_t *output)
+void aes_decryption(uint8_t *cipher_text, uint8_t *output)
 {
         uint8_t i;
         uint8_t round_idx;
 
         memcpy(output, cipher_text, N_AES_STATE_SIZE);
 
-        aes_step_add_round_key(output,
-                               (round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
+        aes_step_add_round_key(
+            output, (aes_round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
 
         for (i = N_AES_ROUND; i > 0; --i) {
                 round_idx = i - 1;
@@ -268,7 +269,7 @@ void aes_decryption(uint8_t *cipher_text, uint8_t *round_key, uint8_t *output)
                 aes_step_inv_shift_rows(output);
                 aes_step_inv_sub_bytes(output);
                 aes_step_add_round_key(
-                    output, (round_key + (round_idx * N_AES_KEY_SIZE)));
+                    output, (aes_round_key + (round_idx * N_AES_KEY_SIZE)));
 
                 if (round_idx > 0) {
                         aes_step_inv_mix_columns(output);

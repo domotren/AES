@@ -4,7 +4,6 @@
 
 #include "aes128.h"
 
-uint8_t aes_round_key[N_AES_KEY_EXPAND_SIZE];
 uint8_t aes_key[N_AES_KEY_SIZE];
 
 int main(void)
@@ -44,7 +43,7 @@ int main(void)
 
         printf("=== AES-128 ECB test ===\n");
         memcpy(aes_key, vector_key, N_AES_KEY_SIZE);
-        aes_init(aes_round_key, aes_key);
+        aes_init(aes_key);
 
         printf("\n[TEST 1]\n");
         memcpy(tmp_plain_text, vector_1_text, N_AES_STATE_SIZE);
@@ -55,7 +54,7 @@ int main(void)
         }
         printf("\n");
 
-        aes_encryption(tmp_plain_text, aes_round_key, tmp_output);
+        aes_encryption(tmp_plain_text, tmp_output);
 
         printf("encryption text: \n\t");
         for (i = 0; i < N_AES_STATE_SIZE; ++i) {
@@ -68,7 +67,7 @@ int main(void)
         else
                 printf("-- Encryption FAIL!\n");
 
-        aes_decryption(tmp_output, aes_round_key, tmp_output);
+        aes_decryption(tmp_output, tmp_output);
 
         if (memcmp(tmp_output, vector_1_text, N_AES_STATE_SIZE) == 0)
                 printf("-- Decryption PASS!\n");
@@ -84,7 +83,7 @@ int main(void)
         }
         printf("\n");
 
-        aes_encryption(tmp_plain_text, aes_round_key, tmp_output);
+        aes_encryption(tmp_plain_text, tmp_output);
 
         printf("encryption text: \n\t");
         for (i = 0; i < N_AES_STATE_SIZE; ++i) {
@@ -97,7 +96,7 @@ int main(void)
         else
                 printf("-- Encryption FAIL!\n");
 
-        aes_decryption(tmp_output, aes_round_key, tmp_output);
+        aes_decryption(tmp_output, tmp_output);
 
         if (memcmp(tmp_output, vector_2_text, N_AES_STATE_SIZE) == 0)
                 printf("-- Decryption PASS!\n");
@@ -113,7 +112,7 @@ int main(void)
         }
         printf("\n");
 
-        aes_encryption(tmp_plain_text, aes_round_key, tmp_output);
+        aes_encryption(tmp_plain_text, tmp_output);
 
         printf("encryption text: \n\t");
         for (i = 0; i < N_AES_STATE_SIZE; ++i) {
@@ -126,7 +125,7 @@ int main(void)
         else
                 printf("-- Encryption FAIL!\n");
 
-        aes_decryption(tmp_output, aes_round_key, tmp_output);
+        aes_decryption(tmp_output, tmp_output);
 
         if (memcmp(tmp_output, vector_3_text, N_AES_STATE_SIZE) == 0)
                 printf("-- Decryption PASS!\n");
@@ -142,7 +141,7 @@ int main(void)
         }
         printf("\n");
 
-        aes_encryption(tmp_plain_text, aes_round_key, tmp_output);
+        aes_encryption(tmp_plain_text, tmp_output);
 
         printf("encryption text: \n\t");
         for (i = 0; i < N_AES_STATE_SIZE; ++i) {
@@ -155,7 +154,7 @@ int main(void)
         else
                 printf("-- Encryption FAIL!\n");
 
-        aes_decryption(tmp_output, aes_round_key, tmp_output);
+        aes_decryption(tmp_output, tmp_output);
 
         if (memcmp(tmp_output, vector_4_text, N_AES_STATE_SIZE) == 0)
                 printf("-- Decryption PASS!\n");
