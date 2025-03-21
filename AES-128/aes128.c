@@ -9,9 +9,9 @@ static uint8_t aes_round_key[N_AES_KEY_EXPAND_SIZE];
 // Galois Field multiply
 static uint8_t gf_multiply(uint8_t a, uint8_t b)
 {
-        uint8_t res = 0; 
-        uint8_t i;
-        for (i = 0; i < 8; ++i) {
+        uint8_t res = 0;
+        uint8_t bit_idx;
+        for (bit_idx = 0; bit_idx < 8; ++bit_idx) {
                 if (b & 1) {
                         res ^= a;
                 }
@@ -24,19 +24,20 @@ static uint8_t gf_multiply(uint8_t a, uint8_t b)
 
 static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
 {
-        uint8_t i, j;
+        uint8_t word_idx, ref_idx;
         uint8_t tmp[4];
 
         memcpy(round_key, key, N_AES_KEY_SIZE);
 
-        for (i = N_AES_KEY_SIZE; i < N_AES_KEY_EXPAND_SIZE; i += 4) {
-                j = (i - 4);
-                tmp[0] = round_key[j];
-                tmp[1] = round_key[(j + 1)];
-                tmp[2] = round_key[(j + 2)];
-                tmp[3] = round_key[(j + 3)];
+        for (word_idx = N_AES_KEY_SIZE; word_idx < N_AES_KEY_EXPAND_SIZE;
+             word_idx += 4) {
+                ref_idx = (word_idx - 4);
+                tmp[0] = round_key[ref_idx];
+                tmp[1] = round_key[(ref_idx + 1)];
+                tmp[2] = round_key[(ref_idx + 2)];
+                tmp[3] = round_key[(ref_idx + 3)];
 
-                if (i % N_AES_KEY_SIZE == 0) {
+                if (word_idx % N_AES_KEY_SIZE == 0) {
                         const uint8_t u8tmp = tmp[0];
                         tmp[0] = tmp[1];
                         tmp[1] = tmp[2];
@@ -48,14 +49,14 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
                         tmp[2] = rijndael_s_box[tmp[2]];
                         tmp[3] = rijndael_s_box[tmp[3]];
 
-                        tmp[0] ^= rijndael_r_con[(i / N_AES_KEY_SIZE)];
+                        tmp[0] ^= rijndael_r_con[(word_idx / N_AES_KEY_SIZE)];
                 }
 
-                j = (i - N_AES_KEY_SIZE);
-                round_key[i] = round_key[j] ^ tmp[0];
-                round_key[(i + 1)] = round_key[(j + 1)] ^ tmp[1];
-                round_key[(i + 2)] = round_key[(j + 2)] ^ tmp[2];
-                round_key[(i + 3)] = round_key[(j + 3)] ^ tmp[3];
+                ref_idx = (word_idx - N_AES_KEY_SIZE);
+                round_key[word_idx] = round_key[ref_idx] ^ tmp[0];
+                round_key[(word_idx + 1)] = round_key[(ref_idx + 1)] ^ tmp[1];
+                round_key[(word_idx + 2)] = round_key[(ref_idx + 2)] ^ tmp[2];
+                round_key[(word_idx + 3)] = round_key[(ref_idx + 3)] ^ tmp[3];
         }
 }
 
@@ -100,23 +101,24 @@ static void aes_step_mix_columns(uint8_t *state)
         1 1 2 3
         3 1 1 2
         */
-        uint8_t i, j;
+        uint8_t col_idx, offset;
 
-        for (i = 0; i < 4; ++i) {
-                j = (i * 4);
-                tmp[0] = state[j];
-                tmp[1] = state[(j + 1)];
-                tmp[2] = state[(j + 2)];
-                tmp[3] = state[(j + 3)];
+        for (col_idx = 0; col_idx < 4; ++col_idx) {
+                offset = (col_idx * 4);
+                tmp[0] = state[offset];
+                tmp[1] = state[(offset + 1)];
+                tmp[2] = state[(offset + 2)];
+                tmp[3] = state[(offset + 3)];
 
-                state[j] = gf_multiply(0x02, tmp[0]) ^
-                               gf_multiply(0x03, tmp[1]) ^ tmp[2] ^ tmp[3];
-                state[(j + 1)] = tmp[0] ^ gf_multiply(0x02, tmp[1]) ^
-                                   gf_multiply(0x03, tmp[2]) ^ tmp[3];
-                state[(j + 2)] = tmp[0] ^ tmp[1] ^ gf_multiply(0x02, tmp[2]) ^
-                                   gf_multiply(0x03, tmp[3]);
-                state[(j + 3)] = gf_multiply(0x03, tmp[0]) ^ tmp[1] ^ tmp[2] ^
-                                   gf_multiply(0x02, tmp[3]);
+                state[offset] = gf_multiply(0x02, tmp[0]) ^
+                                gf_multiply(0x03, tmp[1]) ^ tmp[2] ^ tmp[3];
+                state[(offset + 1)] = tmp[0] ^ gf_multiply(0x02, tmp[1]) ^
+                                      gf_multiply(0x03, tmp[2]) ^ tmp[3];
+                state[(offset + 2)] = tmp[0] ^ tmp[1] ^
+                                      gf_multiply(0x02, tmp[2]) ^
+                                      gf_multiply(0x03, tmp[3]);
+                state[(offset + 3)] = gf_multiply(0x03, tmp[0]) ^ tmp[1] ^
+                                      tmp[2] ^ gf_multiply(0x02, tmp[3]);
         }
 }
 
@@ -170,25 +172,25 @@ static void aes_step_inv_mix_columns(uint8_t *state)
         D 9 E B
         B D 9 E
         */
-        uint8_t i, j;
+        uint8_t col_idx, offset;
 
-        for (i = 0; i < 4; ++i) {
-                j = (i * 4);
-                tmp[0] = *(state + j);
-                tmp[1] = *(state + j + 1);
-                tmp[2] = *(state + j + 2);
-                tmp[3] = *(state + j + 3);
+        for (col_idx = 0; col_idx < 4; ++col_idx) {
+                offset = (col_idx * 4);
+                tmp[0] = *(state + offset);
+                tmp[1] = *(state + offset + 1);
+                tmp[2] = *(state + offset + 2);
+                tmp[3] = *(state + offset + 3);
 
-                *(state + j) =
+                *(state + offset) =
                     gf_multiply(0x0e, tmp[0]) ^ gf_multiply(0x0b, tmp[1]) ^
                     gf_multiply(0x0d, tmp[2]) ^ gf_multiply(0x09, tmp[3]);
-                *(state + j + 1) =
+                *(state + offset + 1) =
                     gf_multiply(0x09, tmp[0]) ^ gf_multiply(0x0e, tmp[1]) ^
                     gf_multiply(0x0b, tmp[2]) ^ gf_multiply(0x0d, tmp[3]);
-                *(state + j + 2) =
+                *(state + offset + 2) =
                     gf_multiply(0x0d, tmp[0]) ^ gf_multiply(0x09, tmp[1]) ^
                     gf_multiply(0x0e, tmp[2]) ^ gf_multiply(0x0b, tmp[3]);
-                *(state + j + 3) =
+                *(state + offset + 3) =
                     gf_multiply(0x0b, tmp[0]) ^ gf_multiply(0x0d, tmp[1]) ^
                     gf_multiply(0x09, tmp[2]) ^ gf_multiply(0x0e, tmp[3]);
         }

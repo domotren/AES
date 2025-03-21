@@ -34,4 +34,5 @@
 extern const uint8_t rijndael_s_box[256];
 extern const uint8_t rijndael_inverse_s_box[256];
 extern const uint8_t rijndael_r_con[];
+
 #endif // _AES_H_
