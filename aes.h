@@ -1,11 +1,12 @@
 #ifndef _AES_H_
 #define _AES_H_
 
+#include "Format/format.h"
+#include "Padding/padding.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
-
-// #define FEATURE_PKCS7_ENABLE
 
 #define ALGO_AES_128
 // #define ALGO_AES_192

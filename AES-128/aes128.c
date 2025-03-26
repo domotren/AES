@@ -5,6 +5,9 @@ const uint8_t rijndael_r_con[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10,
                                     0x20, 0x40, 0x80, 0x1b, 0x36};
 
 static uint8_t aes_round_key[N_AES_KEY_EXPAND_SIZE];
+#if defined(TYPE_AES_CBC)
+static uint8_t aes_init_vector[N_AES_STATE_SIZE];
+#endif
 
 // Galois Field multiply
 static uint8_t gf_multiply(uint8_t a, uint8_t b)
@@ -59,6 +62,16 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
                 round_key[(word_idx + 3)] = round_key[(ref_idx + 3)] ^ tmp[3];
         }
 }
+
+#if defined(TYPE_AES_CBC)
+static void aes_step_cbc_pre_xor(uint8_t *state, uint8_t *vector)
+{
+        uint8_t i;
+        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
+                state[i] ^= vector[i];
+        }
+}
+#endif // TYPE_AES_CBC
 
 static void aes_step_sub_bytes(uint8_t *state)
 {
@@ -196,87 +209,119 @@ static void aes_step_inv_mix_columns(uint8_t *state)
         }
 }
 
-#if defined(FEATURE_PKCS7_ENABLE)
-
-static void pkcs7_padding(uint8_t *data, uint8_t *data_size,
-                          uint8_t block_size)
-{
-        uint8_t padding_size = block_size - *data_size;
-        memset((data + *data_size), padding_size, padding_size);
-        *data_size = block_size;
-}
-
-static void pkcs7_unpadding(uint8_t *data, uint8_t *data_size,
-                            uint8_t block_size)
-{
-        uint8_t final_data = *(data + block_size - 1);
-        uint8_t i;
-
-        if ((final_data == 0x00) || (final_data > block_size)) {
-                return;
-        }
-
-        for (i = 0; i < final_data; ++i) {
-                if (*(data + block_size - 1 - i) != final_data) {
-                        return;
-                }
-        }
-
-        *data_size = (block_size - final_data);
-}
-
-#endif // FEATURE_PKCS7_ENABLE
-
-void aes_init(uint8_t *key)
+void aes_key_init(uint8_t *key)
 {
         aes_key_expansion(aes_round_key, key);
 }
 
-void aes_encryption(uint8_t *plain_text, uint8_t *output)
+#if defined(TYPE_AES_CBC)
+void aes_iv_init(uint8_t *init_vector)
 {
-        uint8_t i;
-        uint8_t round_idx;
+        memcpy(aes_init_vector, init_vector, N_AES_STATE_SIZE);
+}
+#endif
 
-        memcpy(output, plain_text, N_AES_STATE_SIZE);
+uint8_t *aes_encryption(uint8_t *plain, uint32_t plain_size,
+                        uint32_t *cipher_size)
+{
+#if defined(TYPE_AES_CBC)
+        uint8_t *init_vector;
+#endif
+        uint32_t n_block;
 
-        aes_step_add_round_key(output, aes_round_key);
+        uint8_t *cipher;
 
-        for (i = 0; i < N_AES_ROUND; ++i) {
-                round_idx = i + 1;
-
-                aes_step_sub_bytes(output);
-
-                aes_step_shift_rows(output);
-
-                if (round_idx < N_AES_ROUND) {
-                        aes_step_mix_columns(output);
-                }
-
-                aes_step_add_round_key(
-                    output, (aes_round_key + (round_idx * N_AES_KEY_SIZE)));
+        if (plain == NULL) {
+                *cipher_size = 0;
+                return NULL;
         }
+
+        n_block = (plain_size / N_AES_STATE_SIZE) + 1;
+        cipher = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
+
+        memcpy(cipher, plain, plain_size);
+        *cipher_size = plain_size;
+
+        pkcs7_padding(cipher, cipher_size, N_AES_STATE_SIZE);
+
+#if defined(TYPE_AES_CBC)
+        init_vector = aes_init_vector;
+#endif
+
+        for (uint32_t block_idx = 0; block_idx < n_block; ++block_idx) {
+                uint32_t text_offset = block_idx * N_AES_STATE_SIZE;
+#if defined(TYPE_AES_CBC)
+                aes_step_cbc_pre_xor(cipher + text_offset, init_vector);
+#endif
+                aes_step_add_round_key(cipher + text_offset, aes_round_key);
+
+                for (uint8_t round_idx = 0; round_idx < N_AES_ROUND;
+                     ++round_idx) {
+                        uint8_t current_round = round_idx + 1;
+
+                        aes_step_sub_bytes(cipher + text_offset);
+
+                        aes_step_shift_rows(cipher + text_offset);
+
+                        if (current_round < N_AES_ROUND) {
+                                aes_step_mix_columns(cipher + text_offset);
+                        }
+
+                        aes_step_add_round_key(
+                           cipher + text_offset,
+                           (aes_round_key + (current_round * N_AES_KEY_SIZE)));
+                }
+#if defined(TYPE_AES_CBC)
+                init_vector = cipher + text_offset;
+#endif
+        }
+
+        return cipher;
 }
 
-void aes_decryption(uint8_t *cipher_text, uint8_t *output)
+uint8_t *aes_decryption(uint8_t *cipher, uint32_t cipher_size,
+                        uint32_t *plain_size)
 {
-        uint8_t i;
-        uint8_t round_idx;
+#if defined(TYPE_AES_CBC)
+        uint8_t *init_vector;
+#endif
+        uint32_t n_block;
+        uint8_t *plain;
 
-        memcpy(output, cipher_text, N_AES_STATE_SIZE);
+        if (cipher == NULL) {
+                *plain_size = 0;
+                return NULL;
+        }
 
-        aes_step_add_round_key(
-            output, (aes_round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
+        n_block = (cipher_size / N_AES_STATE_SIZE);
+        plain = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
 
-        for (i = N_AES_ROUND; i > 0; --i) {
-                round_idx = i - 1;
+        memcpy(plain, cipher, cipher_size);
+        *plain_size = cipher_size;
 
-                aes_step_inv_shift_rows(output);
-                aes_step_inv_sub_bytes(output);
+        for (uint32_t block_idx = 0; block_idx < n_block; ++block_idx) {
+                uint32_t text_offset = block_idx * N_AES_STATE_SIZE;
+
                 aes_step_add_round_key(
-                    output, (aes_round_key + (round_idx * N_AES_KEY_SIZE)));
+                    plain + text_offset,
+                    (aes_round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
 
-                if (round_idx > 0) {
-                        aes_step_inv_mix_columns(output);
+                for (uint8_t round_idx = N_AES_ROUND; round_idx > 0;
+                     --round_idx) {
+                        uint8_t current_round = round_idx - 1;
+
+                        aes_step_inv_shift_rows(plain + text_offset);
+                        aes_step_inv_sub_bytes(plain + text_offset);
+                        aes_step_add_round_key(
+                           plain + text_offset,
+                           (aes_round_key + (current_round * N_AES_KEY_SIZE)));
+
+                        if (current_round > 0) {
+                                aes_step_inv_mix_columns(plain + text_offset);
+                        }
                 }
         }
+
+        pkcs7_unpadding(plain, plain_size, N_AES_STATE_SIZE);
+        return plain;
 }

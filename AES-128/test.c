@@ -4,22 +4,25 @@
 
 #include "aes128.h"
 
-uint8_t aes_key[N_AES_KEY_SIZE];
+#define N_ECB_TEST 4
+#define MAX_SIZE_ECB_TEST 16
 
-static void print_hex_array(const char *label, uint8_t *data,
-                            uint8_t n_len)
+static void print_hex_array(const char *label, uint8_t *data, uint8_t n_len)
 {
         uint8_t i;
 
-        printf("%s: \n\t", label);
+        printf("%s:", label);
         for (i = 0; i < n_len; ++i) {
+                if (i % 8 == 0) {
+                        printf("\n\t");
+                }
                 printf("0x%02x ", data[i]);
         }
         printf("\n");
 }
 
-static void compare_result(const char *item, uint8_t *data,
-                           uint8_t *src, uint8_t n_len)
+static void compare_result(const char *item, uint8_t *data, uint8_t *src,
+                           uint8_t n_len)
 {
         printf("-- %s ", item);
         if (memcmp(data, src, n_len) == 0)
@@ -28,111 +31,65 @@ static void compare_result(const char *item, uint8_t *data,
                 printf("FAIL!\n");
 }
 
-int main(void)
+#if defined(TYPE_AES_ECB)
+static void aes_test_ecb(void)
 {
         /* AES128 ECB test vectors */
-        uint8_t vector_1_text[N_AES_STATE_SIZE] = {
-            0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96,
-            0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a};
-        uint8_t vector_1_cipher[N_AES_STATE_SIZE] = {
-            0x3a, 0xd7, 0x7b, 0xb4, 0x0d, 0x7a, 0x36, 0x60,
-            0xa8, 0x9e, 0xca, 0xf3, 0x24, 0x66, 0xef, 0x97};
-        uint8_t vector_2_text[N_AES_STATE_SIZE] = {
-            0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03, 0xac, 0x9c,
-            0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51};
-        uint8_t vector_2_cipher[N_AES_STATE_SIZE] = {
-            0xf5, 0xd3, 0xd5, 0x85, 0x03, 0xb9, 0x69, 0x9d,
-            0xe7, 0x85, 0x89, 0x5a, 0x96, 0xfd, 0xba, 0xaf};
-        uint8_t vector_3_text[N_AES_STATE_SIZE] = {
-            0x30, 0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11,
-            0xe5, 0xfb, 0xc1, 0x19, 0x1a, 0x0a, 0x52, 0xef};
-        uint8_t vector_3_cipher[N_AES_STATE_SIZE] = {
-            0x43, 0xb1, 0xcd, 0x7f, 0x59, 0x8e, 0xce, 0x23,
-            0x88, 0x1b, 0x00, 0xe3, 0xed, 0x03, 0x06, 0x88};
-        uint8_t vector_4_text[N_AES_STATE_SIZE] = {
-            0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b, 0x17,
-            0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10};
-        uint8_t vector_4_cipher[N_AES_STATE_SIZE] = {
-            0x7b, 0x0c, 0x78, 0x5e, 0x27, 0xe8, 0xad, 0x3f,
-            0x82, 0x23, 0x20, 0x71, 0x04, 0x72, 0x5d, 0xd4};
-        uint8_t vector_key[N_AES_KEY_SIZE] = {
-            0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-            0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c};
+        char *vector_text[N_ECB_TEST] = {"6bc1bee22e409f96e93d7e117393172a",
+                                         "ae2d8a571e03ac9c9eb76fac45af8e51",
+                                         "30c81c46a35ce411e5fbc1191a0a52ef",
+                                         "f69f2445df4f9b17ad2b417be66c3710"};
+        char *vector_cipher[N_ECB_TEST] = {"3ad77bb40d7a3660a89ecaf32466ef97",
+                                           "f5d3d58503b9699de785895a96fdbaaf",
+                                           "43b1cd7f598ece23881b00e3ed030688",
+                                           "7b0c785e27e8ad3f8223207104725dd4"};
+        char *vector_key = "2b7e151628aed2a6abf7158809cf4f3c";
 
-        uint8_t tmp_plain_text[N_AES_STATE_SIZE];
-        uint8_t tmp_output[N_AES_STATE_SIZE];
+        uint8_t tmp_plain[MAX_SIZE_ECB_TEST];
+        uint8_t tmp_cipher[MAX_SIZE_ECB_TEST];
+        uint8_t tmp_key[N_AES_KEY_SIZE];
+        char *ptr_test, *ptr_cipher;
+
+        uint8_t *cipher = NULL;
+        uint32_t cipher_size;
+        uint8_t *plain = NULL;
+        uint32_t plain_size;
 
         printf("=== AES-128 ECB test ===\n");
-        memcpy(aes_key, vector_key, N_AES_KEY_SIZE);
-        aes_init(aes_key);
 
-        printf("\n[TEST 1]\n");
-        memcpy(tmp_plain_text, vector_1_text, N_AES_STATE_SIZE);
+        hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
+        aes_key_init(tmp_key);
 
-        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
+        for (uint8_t test_idx = 0; test_idx < N_ECB_TEST; ++test_idx) {
+                printf("\n[TEST %d]\n", test_idx + 1);
+                ptr_test = vector_text[test_idx];
+                ptr_cipher = vector_cipher[test_idx];
 
-        aes_encryption(tmp_plain_text, tmp_output);
+                uint32_t input_size = strlen(ptr_test) / 2;
+                hex_str_to_bytes(ptr_test, tmp_plain, input_size);
+                uint32_t output_size = strlen(ptr_cipher) / 2;
+                hex_str_to_bytes(ptr_cipher, tmp_cipher, output_size);
 
-        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
+                print_hex_array("Plain text", tmp_plain, N_AES_STATE_SIZE);
+                cipher = aes_encryption(tmp_plain, 16, &cipher_size);
+                printf("Encrypted size: %d\n", cipher_size);
+                print_hex_array("Encryption", cipher, cipher_size);
+                compare_result("Encryption", cipher, tmp_cipher, output_size);
+                plain = aes_decryption(cipher, cipher_size, &plain_size);
+                printf("Decrypted size: %d\n", plain_size);
+                print_hex_array("Decryption", plain, plain_size);
+                compare_result("Decryption", plain, tmp_plain, input_size);
+                free(cipher);
+                free(plain);
+                cipher = plain = NULL;
+        }
+}
+#endif // TYPE_AES_ECB
 
-        compare_result("Encryption", tmp_output, vector_1_cipher,
-                       N_AES_STATE_SIZE);
-
-        aes_decryption(tmp_output, tmp_output);
-
-        compare_result("Decryption", tmp_output, vector_1_text,
-                       N_AES_STATE_SIZE);
-
-        printf("\n[TEST 2]\n");
-        memcpy(tmp_plain_text, vector_2_text, N_AES_STATE_SIZE);
-
-        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
-
-        aes_encryption(tmp_plain_text, tmp_output);
-
-        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
-
-        compare_result("Encryption", tmp_output, vector_2_cipher,
-                       N_AES_STATE_SIZE);
-
-        aes_decryption(tmp_output, tmp_output);
-
-        compare_result("Decryption", tmp_output, vector_2_text,
-                       N_AES_STATE_SIZE);
-
-        printf("\n[TEST 3]\n");
-        memcpy(tmp_plain_text, vector_3_text, N_AES_STATE_SIZE);
-
-        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
-
-        aes_encryption(tmp_plain_text, tmp_output);
-
-        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
-
-        compare_result("Encryption", tmp_output, vector_3_cipher,
-                       N_AES_STATE_SIZE);
-
-        aes_decryption(tmp_output, tmp_output);
-
-        compare_result("Decryption", tmp_output, vector_3_text,
-                       N_AES_STATE_SIZE);
-
-        printf("\n[TEST 4]\n");
-        memcpy(tmp_plain_text, vector_4_text, N_AES_STATE_SIZE);
-
-        print_hex_array("plain text", tmp_plain_text, N_AES_STATE_SIZE);
-
-        aes_encryption(tmp_plain_text, tmp_output);
-
-        print_hex_array("encryption text", tmp_output, N_AES_STATE_SIZE);
-
-        compare_result("Encryption", tmp_output, vector_4_cipher,
-                       N_AES_STATE_SIZE);
-
-        aes_decryption(tmp_output, tmp_output);
-
-        compare_result("Decryption", tmp_output, vector_4_text,
-                       N_AES_STATE_SIZE);
-
+int main(void)
+{
+#if defined(TYPE_AES_ECB)
+        aes_test_ecb();
+#endif
         return 0;
 }
