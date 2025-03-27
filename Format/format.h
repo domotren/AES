@@ -12,6 +12,6 @@ enum format_error_type {
         FORMAT_OK = 0
 };
 
-extern int hex_str_to_bytes(char *src, uint8_t *dst, size_t array_size);
+extern int hex_str_to_bytes(char *src, uint8_t *dst, uint32_t array_size);
 
 #endif // _FORMAT_H_

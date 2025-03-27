@@ -64,7 +64,7 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
 }
 
 #if defined(TYPE_AES_CBC)
-static void aes_step_cbc_pre_xor(uint8_t *state, uint8_t *vector)
+static void aes_step_cbc_pre_block_xor(uint8_t *state, uint8_t *vector)
 {
         uint8_t i;
         for (i = 0; i < N_AES_STATE_SIZE; ++i) {
@@ -244,15 +244,19 @@ uint8_t *aes_encryption(uint8_t *plain, uint32_t plain_size,
 
         pkcs7_padding(cipher, cipher_size, N_AES_STATE_SIZE);
 
-#if defined(TYPE_AES_CBC)
-        init_vector = aes_init_vector;
-#endif
-
         for (uint32_t block_idx = 0; block_idx < n_block; ++block_idx) {
                 uint32_t text_offset = block_idx * N_AES_STATE_SIZE;
+
 #if defined(TYPE_AES_CBC)
-                aes_step_cbc_pre_xor(cipher + text_offset, init_vector);
+                if (block_idx == 0) {
+                        init_vector = aes_init_vector;
+                } else {
+                        init_vector =
+                            cipher + (block_idx - 1) * N_AES_STATE_SIZE;
+                }
+                aes_step_cbc_pre_block_xor(cipher + text_offset, init_vector);
 #endif
+
                 aes_step_add_round_key(cipher + text_offset, aes_round_key);
 
                 for (uint8_t round_idx = 0; round_idx < N_AES_ROUND;
@@ -268,12 +272,9 @@ uint8_t *aes_encryption(uint8_t *plain, uint32_t plain_size,
                         }
 
                         aes_step_add_round_key(
-                           cipher + text_offset,
-                           (aes_round_key + (current_round * N_AES_KEY_SIZE)));
+                            cipher + text_offset,
+                            (aes_round_key + (current_round * N_AES_KEY_SIZE)));
                 }
-#if defined(TYPE_AES_CBC)
-                init_vector = cipher + text_offset;
-#endif
         }
 
         return cipher;
@@ -299,8 +300,22 @@ uint8_t *aes_decryption(uint8_t *cipher, uint32_t cipher_size,
         memcpy(plain, cipher, cipher_size);
         *plain_size = cipher_size;
 
+#if defined(TYPE_AES_CBC)
+        // backward decryption for CBC mode
+        for (int32_t block_idx = (n_block - 1); block_idx >= 0; --block_idx) {
+#else
         for (uint32_t block_idx = 0; block_idx < n_block; ++block_idx) {
+#endif
                 uint32_t text_offset = block_idx * N_AES_STATE_SIZE;
+
+#if defined(TYPE_AES_CBC)
+                if (block_idx == 0) {
+                        init_vector = aes_init_vector;
+                } else {
+                        init_vector =
+                            cipher + (block_idx - 1) * N_AES_STATE_SIZE;
+                }
+#endif
 
                 aes_step_add_round_key(
                     plain + text_offset,
@@ -313,13 +328,17 @@ uint8_t *aes_decryption(uint8_t *cipher, uint32_t cipher_size,
                         aes_step_inv_shift_rows(plain + text_offset);
                         aes_step_inv_sub_bytes(plain + text_offset);
                         aes_step_add_round_key(
-                           plain + text_offset,
-                           (aes_round_key + (current_round * N_AES_KEY_SIZE)));
+                            plain + text_offset,
+                            (aes_round_key + (current_round * N_AES_KEY_SIZE)));
 
                         if (current_round > 0) {
                                 aes_step_inv_mix_columns(plain + text_offset);
                         }
                 }
+
+#if defined(TYPE_AES_CBC)
+                aes_step_cbc_pre_block_xor(plain + text_offset, init_vector);
+#endif
         }
 
         pkcs7_unpadding(plain, plain_size, N_AES_STATE_SIZE);

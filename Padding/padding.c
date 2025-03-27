@@ -1,6 +1,5 @@
 
 #include "padding.h"
-#include <stdio.h>
 
 void pkcs7_padding(uint8_t *data, uint32_t *data_size, uint8_t block_size)
 {
