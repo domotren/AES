@@ -1,14 +1,14 @@
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#include "aes128.h"
+#include "aes.h"
 
 #define N_ECB_TEST 4
 #define MAX_SIZE_ECB_TEST 16
 
 #define N_CBC_TEST 4
-#define MAX_SIZE_CBC_TEST 32
+#define MAX_SIZE_CBC_TEST 16
+
+#define N_CTR_TEST 4
+#define MAX_SIZE_CTR_TEST 16
 
 static void print_hex_array(const char *label, uint8_t *data, uint8_t n_len)
 {
@@ -111,7 +111,7 @@ static void aes_test_cbc(void)
         uint8_t tmp_cipher[MAX_SIZE_CBC_TEST];
         uint8_t tmp_key[N_AES_KEY_SIZE];
         uint8_t tmp_iv[N_AES_KEY_SIZE];
-        char *ptr_test, *ptr_cipher;
+        char *ptr_test, *ptr_cipher, *ptr_iv;
 
         uint8_t *cipher = NULL;
         uint32_t cipher_size;
@@ -123,12 +123,13 @@ static void aes_test_cbc(void)
         hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
         aes_key_init(tmp_key);
 
-        for (uint8_t test_idx = 0; test_idx < N_ECB_TEST; ++test_idx) {
+        for (uint8_t test_idx = 0; test_idx < N_CBC_TEST; ++test_idx) {
                 printf("\n[TEST %d]\n", test_idx + 1);
                 ptr_test = vector_text[test_idx];
                 ptr_cipher = vector_cipher[test_idx];
+                ptr_iv = vector_iv[test_idx];
 
-                hex_str_to_bytes(vector_iv[test_idx], tmp_iv, N_AES_KEY_SIZE);
+                hex_str_to_bytes(ptr_iv, tmp_iv, N_AES_KEY_SIZE);
                 aes_iv_init(tmp_iv);
                 print_hex_array("Init vector", tmp_iv, N_AES_KEY_SIZE);
 
@@ -153,6 +154,71 @@ static void aes_test_cbc(void)
 }
 #endif // TYPE_AES_CBC
 
+#if defined(TYPE_AES_CTR)
+static void aes_test_ctr(void)
+{
+        /* AES128 CTR test vectors */
+        char *vector_nonce[N_CTR_TEST] = {"f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+                                          "f0f1f2f3f4f5f6f7f8f9fafbfcfdff00",
+                                          "f0f1f2f3f4f5f6f7f8f9fafbfcfdff01",
+                                          "f0f1f2f3f4f5f6f7f8f9fafbfcfdff02"};
+        char *vector_text[N_CTR_TEST] = {"6bc1bee22e409f96e93d7e117393172a",
+                                         "ae2d8a571e03ac9c9eb76fac45af8e51",
+                                         "30c81c46a35ce411e5fbc1191a0a52ef",
+                                         "f69f2445df4f9b17ad2b417be66c3710"};
+        char *vector_cipher[N_CTR_TEST] = {"874d6191b620e3261bef6864990db6ce",
+                                           "9806f66b7970fdff8617187bb9fffdff",
+                                           "5ae4df3edbd5d35e5b4f09020db03eab",
+                                           "1e031dda2fbe03d1792170a0f3009cee"};
+        char *vector_key = "2b7e151628aed2a6abf7158809cf4f3c";
+
+        uint8_t tmp_plain[MAX_SIZE_CTR_TEST];
+        uint8_t tmp_cipher[MAX_SIZE_CTR_TEST];
+        uint8_t tmp_key[N_AES_KEY_SIZE];
+        uint8_t tmp_nonce[N_AES_NONCE_SIZE];
+        char *ptr_test, *ptr_cipher, *ptr_nonce;
+
+        uint8_t *cipher = NULL;
+        uint32_t cipher_size;
+        uint8_t *plain = NULL;
+        uint32_t plain_size;
+
+        printf("=== AES-128 CTR test ===\n");
+
+        hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
+        aes_key_init(tmp_key);
+
+        for (uint8_t test_idx = 0; test_idx < N_CBC_TEST; ++test_idx) {
+                printf("\n[TEST %d]\n", test_idx + 1);
+                ptr_test = vector_text[test_idx];
+                ptr_cipher = vector_cipher[test_idx];
+                ptr_nonce = vector_nonce[test_idx];
+
+                hex_str_to_bytes(ptr_nonce, tmp_nonce, N_AES_NONCE_SIZE);
+                aes_nonce_init(tmp_nonce);
+                print_hex_array("Init Nonce", tmp_nonce, N_AES_NONCE_SIZE);
+
+                uint32_t input_size = strlen(ptr_test) / 2;
+                hex_str_to_bytes(ptr_test, tmp_plain, input_size);
+                uint32_t output_size = strlen(ptr_cipher) / 2;
+                hex_str_to_bytes(ptr_cipher, tmp_cipher, output_size);
+
+                print_hex_array("Plain text", tmp_plain, input_size);
+                cipher = aes_encryption(tmp_plain, input_size, &cipher_size);
+                printf("Encrypted size: %d\n", cipher_size);
+                print_hex_array("Encryption", cipher, cipher_size);
+                compare_result("Encryption", cipher, tmp_cipher, output_size);
+                plain = aes_decryption(cipher, cipher_size, &plain_size);
+                printf("Decrypted size: %d\n", plain_size);
+                print_hex_array("Decryption", plain, plain_size);
+                compare_result("Decryption", plain, tmp_plain, input_size);
+                free(cipher);
+                free(plain);
+                cipher = plain = NULL;
+        }
+}
+#endif // TYPE_AES_CTR
+
 int main(void)
 {
 #if defined(TYPE_AES_ECB)
@@ -160,6 +226,9 @@ int main(void)
 #endif
 #if defined(TYPE_AES_CBC)
         aes_test_cbc();
+#endif
+#if defined(TYPE_AES_CTR)
+        aes_test_ctr();
 #endif
         return 0;
 }

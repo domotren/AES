@@ -1,5 +1,5 @@
 
-#include "aes128.h"
+#include "aes.h"
 
 const uint8_t rijndael_r_con[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10,
                                     0x20, 0x40, 0x80, 0x1b, 0x36};
@@ -7,6 +7,9 @@ const uint8_t rijndael_r_con[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10,
 static uint8_t aes_round_key[N_AES_KEY_EXPAND_SIZE];
 #if defined(TYPE_AES_CBC)
 static uint8_t aes_init_vector[N_AES_STATE_SIZE];
+#endif
+#if defined(TYPE_AES_CTR)
+static uint8_t aes_nonce[N_AES_NONCE_SIZE];
 #endif
 
 // Galois Field multiply
@@ -72,6 +75,16 @@ static void aes_step_cbc_pre_block_xor(uint8_t *state, uint8_t *vector)
         }
 }
 #endif // TYPE_AES_CBC
+
+#if defined(TYPE_AES_CTR)
+static void aes_step_ctr_key_stream_xor(uint8_t *state, uint8_t *key_stream)
+{
+        uint8_t i;
+        for (i = 0; i < N_AES_STATE_SIZE; ++i) {
+                state[i] ^= key_stream[i];
+        }
+}
+#endif // TYPE_AES_CTR
 
 static void aes_step_sub_bytes(uint8_t *state)
 {
@@ -144,6 +157,7 @@ static void aes_step_add_round_key(uint8_t *state, uint8_t *round_key)
         }
 }
 
+#if !defined(TYPE_AES_CTR)
 static void aes_step_inv_sub_bytes(uint8_t *state)
 {
         uint8_t i;
@@ -208,6 +222,7 @@ static void aes_step_inv_mix_columns(uint8_t *state)
                     gf_multiply(0x09, tmp[2]) ^ gf_multiply(0x0e, tmp[3]);
         }
 }
+#endif // !TYPE_AES_CTR
 
 void aes_key_init(uint8_t *key)
 {
@@ -221,11 +236,21 @@ void aes_iv_init(uint8_t *init_vector)
 }
 #endif
 
+#if defined(TYPE_AES_CTR)
+void aes_nonce_init(uint8_t *nonce)
+{
+        memcpy(aes_nonce, nonce, N_AES_NONCE_SIZE);
+}
+#endif
+
 uint8_t *aes_encryption(uint8_t *plain, uint32_t plain_size,
                         uint32_t *cipher_size)
 {
 #if defined(TYPE_AES_CBC)
         uint8_t *init_vector;
+#endif
+#if defined(TYPE_AES_CTR)
+        uint8_t key_stream[N_AES_STATE_SIZE];
 #endif
         uint32_t n_block;
 
@@ -244,37 +269,54 @@ uint8_t *aes_encryption(uint8_t *plain, uint32_t plain_size,
 
         pkcs7_padding(cipher, cipher_size, N_AES_STATE_SIZE);
 
-        for (uint32_t block_idx = 0; block_idx < n_block; ++block_idx) {
-                uint32_t text_offset = block_idx * N_AES_STATE_SIZE;
+        for (uint32_t b = 0; b < n_block; ++b) {
+                uint32_t text_offset = b * N_AES_STATE_SIZE;
+                uint8_t *ptr_plain;
 
+#if defined(TYPE_AES_CTR)
+                memcpy(key_stream, aes_nonce, N_AES_NONCE_SIZE);
+#if (N_AES_NONCE_SIZE == N_AES_NONCE_NIST)
+                // for NIST, 96-bit nonce | 32-bit block_number
+                key_stream[N_AES_NONCE_SIZE] = (uint8_t)(b >> 24);
+                key_stream[N_AES_NONCE_SIZE + 1] = (uint8_t)(b >> 16);
+                key_stream[N_AES_NONCE_SIZE + 2] = (uint8_t)(b >> 8);
+                key_stream[N_AES_NONCE_SIZE + 3] = (uint8_t)(b);
+#else
+                // simplized, 128-bit nonce ++
+                key_stream[N_AES_NONCE_SIZE - 1] += (uint8_t)(b);
+#endif
+                ptr_plain = key_stream;
+#else
+                ptr_plain = cipher + text_offset;
+#endif
 #if defined(TYPE_AES_CBC)
-                if (block_idx == 0) {
+                if (b == 0) {
                         init_vector = aes_init_vector;
                 } else {
-                        init_vector =
-                            cipher + (block_idx - 1) * N_AES_STATE_SIZE;
+                        init_vector = cipher + (b - 1) * N_AES_STATE_SIZE;
                 }
-                aes_step_cbc_pre_block_xor(cipher + text_offset, init_vector);
+                aes_step_cbc_pre_block_xor(ptr_plain, init_vector);
 #endif
+                aes_step_add_round_key(ptr_plain, aes_round_key);
 
-                aes_step_add_round_key(cipher + text_offset, aes_round_key);
+                for (uint8_t r = 0; r < N_AES_ROUND; ++r) {
+                        uint8_t round_k = r + 1;
 
-                for (uint8_t round_idx = 0; round_idx < N_AES_ROUND;
-                     ++round_idx) {
-                        uint8_t current_round = round_idx + 1;
+                        aes_step_sub_bytes(ptr_plain);
 
-                        aes_step_sub_bytes(cipher + text_offset);
+                        aes_step_shift_rows(ptr_plain);
 
-                        aes_step_shift_rows(cipher + text_offset);
-
-                        if (current_round < N_AES_ROUND) {
-                                aes_step_mix_columns(cipher + text_offset);
+                        if (round_k < N_AES_ROUND) {
+                                aes_step_mix_columns(ptr_plain);
                         }
 
                         aes_step_add_round_key(
-                            cipher + text_offset,
-                            (aes_round_key + (current_round * N_AES_KEY_SIZE)));
+                            ptr_plain,
+                            (aes_round_key + (round_k * N_AES_KEY_SIZE)));
                 }
+#if defined(TYPE_AES_CTR)
+                aes_step_ctr_key_stream_xor(cipher + text_offset, ptr_plain);
+#endif
         }
 
         return cipher;
@@ -285,6 +327,9 @@ uint8_t *aes_decryption(uint8_t *cipher, uint32_t cipher_size,
 {
 #if defined(TYPE_AES_CBC)
         uint8_t *init_vector;
+#endif
+#if defined(TYPE_AES_CTR)
+        uint8_t key_stream[N_AES_STATE_SIZE];
 #endif
         uint32_t n_block;
         uint8_t *plain;
@@ -302,42 +347,78 @@ uint8_t *aes_decryption(uint8_t *cipher, uint32_t cipher_size,
 
 #if defined(TYPE_AES_CBC)
         // backward decryption for CBC mode
-        for (int32_t block_idx = (n_block - 1); block_idx >= 0; --block_idx) {
+        for (int32_t b = (n_block - 1); b >= 0; --b) {
 #else
-        for (uint32_t block_idx = 0; block_idx < n_block; ++block_idx) {
+        for (uint32_t b = 0; b < n_block; ++b) {
 #endif
-                uint32_t text_offset = block_idx * N_AES_STATE_SIZE;
+                uint32_t text_offset = b * N_AES_STATE_SIZE;
+                uint8_t *ptr_cipher;
 
+#if defined(TYPE_AES_CTR)
+                memcpy(key_stream, aes_nonce, N_AES_NONCE_SIZE);
+#if (N_AES_NONCE_SIZE == N_AES_NONCE_NIST)
+                // for NIST, 96-bit nonce | 32-bit block_number
+                key_stream[N_AES_NONCE_SIZE] = (uint8_t)(b >> 24);
+                key_stream[N_AES_NONCE_SIZE + 1] = (uint8_t)(b >> 16);
+                key_stream[N_AES_NONCE_SIZE + 2] = (uint8_t)(b >> 8);
+                key_stream[N_AES_NONCE_SIZE + 3] = (uint8_t)(b);
+#else
+                // simplized, 128-bit nonce ++
+                key_stream[N_AES_NONCE_SIZE - 1] += (uint8_t)(b);
+#endif
+                ptr_cipher = key_stream;
+#else
+                ptr_cipher = plain + text_offset;
+#endif
 #if defined(TYPE_AES_CBC)
-                if (block_idx == 0) {
+                if (b == 0) {
                         init_vector = aes_init_vector;
                 } else {
-                        init_vector =
-                            cipher + (block_idx - 1) * N_AES_STATE_SIZE;
+                        init_vector = cipher + (b - 1) * N_AES_STATE_SIZE;
                 }
 #endif
 
+#if defined(TYPE_AES_CTR)
+                // AES-CTR: use same process as encryption.
+                aes_step_add_round_key(ptr_cipher, aes_round_key);
+
+                for (uint8_t r = 0; r < N_AES_ROUND; ++r) {
+                        uint8_t round_k = r + 1;
+
+                        aes_step_sub_bytes(ptr_cipher);
+
+                        aes_step_shift_rows(ptr_cipher);
+
+                        if (round_k < N_AES_ROUND) {
+                                aes_step_mix_columns(ptr_cipher);
+                        }
+
+                        aes_step_add_round_key(
+                            ptr_cipher,
+                            (aes_round_key + (round_k * N_AES_KEY_SIZE)));
+                }
+                aes_step_ctr_key_stream_xor(plain + text_offset, ptr_cipher);
+#else
                 aes_step_add_round_key(
-                    plain + text_offset,
+                    ptr_cipher,
                     (aes_round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
 
-                for (uint8_t round_idx = N_AES_ROUND; round_idx > 0;
-                     --round_idx) {
-                        uint8_t current_round = round_idx - 1;
+                for (uint8_t r = N_AES_ROUND; r > 0; --r) {
+                        uint8_t round_k = r - 1;
 
-                        aes_step_inv_shift_rows(plain + text_offset);
-                        aes_step_inv_sub_bytes(plain + text_offset);
+                        aes_step_inv_shift_rows(ptr_cipher);
+                        aes_step_inv_sub_bytes(ptr_cipher);
                         aes_step_add_round_key(
-                            plain + text_offset,
-                            (aes_round_key + (current_round * N_AES_KEY_SIZE)));
+                            ptr_cipher,
+                            (aes_round_key + (round_k * N_AES_KEY_SIZE)));
 
-                        if (current_round > 0) {
-                                aes_step_inv_mix_columns(plain + text_offset);
+                        if (round_k > 0) {
+                                aes_step_inv_mix_columns(ptr_cipher);
                         }
                 }
-
 #if defined(TYPE_AES_CBC)
-                aes_step_cbc_pre_block_xor(plain + text_offset, init_vector);
+                aes_step_cbc_pre_block_xor(ptr_cipher, init_vector);
+#endif
 #endif
         }
 
