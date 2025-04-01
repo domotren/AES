@@ -10,6 +10,9 @@
 #define N_CTR_TEST 4
 #define MAX_SIZE_CTR_TEST 16
 
+#define N_GCM_TEST 4
+#define MAX_SIZE_GCM_TEST 16
+
 static void print_hex_array(const char *label, uint8_t *data, uint8_t n_len)
 {
         uint8_t i;
@@ -53,38 +56,64 @@ static void aes_test_ecb(void)
         uint8_t tmp_key[N_AES_KEY_SIZE];
         char *ptr_test, *ptr_cipher;
 
-        uint8_t *cipher = NULL;
-        uint32_t cipher_size;
-        uint8_t *plain = NULL;
-        uint32_t plain_size;
-
         printf("=== AES-128 ECB test ===\n");
 
-        hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
-        aes_key_init(tmp_key);
+        struct aes_ctx aes_context;
+        enum aes_error aes_result;
 
         for (uint8_t test_idx = 0; test_idx < N_ECB_TEST; ++test_idx) {
                 printf("\n[TEST %d]\n", test_idx + 1);
+
+                // key may be different
+                hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
+                aes_key_init(&aes_context, tmp_key);
+
                 ptr_test = vector_text[test_idx];
                 ptr_cipher = vector_cipher[test_idx];
 
-                uint32_t input_size = strlen(ptr_test) / 2;
-                hex_str_to_bytes(ptr_test, tmp_plain, input_size);
-                uint32_t output_size = strlen(ptr_cipher) / 2;
-                hex_str_to_bytes(ptr_cipher, tmp_cipher, output_size);
+                uint32_t plain_size = strlen(ptr_test) / 2;
+                hex_str_to_bytes(ptr_test, tmp_plain, plain_size);
+                uint32_t cipher_size = strlen(ptr_cipher) / 2;
+                hex_str_to_bytes(ptr_cipher, tmp_cipher, cipher_size);
 
-                print_hex_array("Plain text", tmp_plain, input_size);
-                cipher = aes_encryption(tmp_plain, input_size, &cipher_size);
-                printf("Encrypted size: %d\n", cipher_size);
-                print_hex_array("Encryption", cipher, cipher_size);
-                compare_result("Encryption", cipher, tmp_cipher, output_size);
-                plain = aes_decryption(cipher, cipher_size, &plain_size);
-                printf("Decrypted size: %d\n", plain_size);
-                print_hex_array("Decryption", plain, plain_size);
-                compare_result("Decryption", plain, tmp_plain, input_size);
-                free(cipher);
-                free(plain);
-                cipher = plain = NULL;
+                print_hex_array("Plain text", tmp_plain, plain_size);
+
+                aes_context.input = tmp_plain;
+                aes_context.input_len = plain_size;
+                aes_context.output = NULL;
+                aes_context.output_len = 0;
+                aes_result = aes_ecb_encryption(&aes_context);
+                if (aes_result != AES_SUCCESS) {
+                        printf("Encrypt error!! : %d\n", aes_result);
+                        (void)aes_context_release(&aes_context);
+                        return;
+                }
+
+                printf("Encrypted size: %d\n", aes_context.output_len);
+                print_hex_array("Encryption", aes_context.output,
+                                aes_context.output_len);
+                compare_result("Encryption", aes_context.output, tmp_cipher,
+                               cipher_size);
+
+                // take cipher(the padded memory) as new input
+                aes_context.input = aes_context.output;
+                aes_context.input_len = aes_context.output_len;
+                aes_context.output = NULL;
+                aes_context.output_len = 0;
+                aes_result = aes_ecb_decryption(&aes_context);
+                if (aes_result != AES_SUCCESS) {
+                        printf("Decrypt error!! : %d\n", aes_result);
+                        (void)aes_context_release(&aes_context);
+                        return;
+                }
+
+                printf("Decrypted size: %d\n", aes_context.output_len);
+                print_hex_array("Decryption", aes_context.output,
+                                aes_context.output_len);
+                compare_result("Decryption", aes_context.output, tmp_plain,
+                               plain_size);
+
+                (void)aes_context_release(&aes_context);
         }
 }
 #endif // TYPE_AES_ECB
@@ -113,43 +142,69 @@ static void aes_test_cbc(void)
         uint8_t tmp_iv[N_AES_KEY_SIZE];
         char *ptr_test, *ptr_cipher, *ptr_iv;
 
-        uint8_t *cipher = NULL;
-        uint32_t cipher_size;
-        uint8_t *plain = NULL;
-        uint32_t plain_size;
-
         printf("=== AES-128 CBC test ===\n");
 
-        hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
-        aes_key_init(tmp_key);
+        struct aes_ctx aes_context;
+        enum aes_error aes_result;
 
         for (uint8_t test_idx = 0; test_idx < N_CBC_TEST; ++test_idx) {
                 printf("\n[TEST %d]\n", test_idx + 1);
+
+                // key may be different
+                hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
+                aes_key_init(&aes_context, tmp_key);
+
                 ptr_test = vector_text[test_idx];
                 ptr_cipher = vector_cipher[test_idx];
                 ptr_iv = vector_iv[test_idx];
 
                 hex_str_to_bytes(ptr_iv, tmp_iv, N_AES_KEY_SIZE);
-                aes_iv_init(tmp_iv);
+                aes_iv_init(&aes_context, tmp_iv);
                 print_hex_array("Init vector", tmp_iv, N_AES_KEY_SIZE);
 
-                uint32_t input_size = strlen(ptr_test) / 2;
-                hex_str_to_bytes(ptr_test, tmp_plain, input_size);
-                uint32_t output_size = strlen(ptr_cipher) / 2;
-                hex_str_to_bytes(ptr_cipher, tmp_cipher, output_size);
+                uint32_t plain_size = strlen(ptr_test) / 2;
+                hex_str_to_bytes(ptr_test, tmp_plain, plain_size);
+                uint32_t cipher_size = strlen(ptr_cipher) / 2;
+                hex_str_to_bytes(ptr_cipher, tmp_cipher, cipher_size);
 
-                print_hex_array("Plain text", tmp_plain, input_size);
-                cipher = aes_encryption(tmp_plain, input_size, &cipher_size);
-                printf("Encrypted size: %d\n", cipher_size);
-                print_hex_array("Encryption", cipher, cipher_size);
-                compare_result("Encryption", cipher, tmp_cipher, output_size);
-                plain = aes_decryption(cipher, cipher_size, &plain_size);
-                printf("Decrypted size: %d\n", plain_size);
-                print_hex_array("Decryption", plain, plain_size);
-                compare_result("Decryption", plain, tmp_plain, input_size);
-                free(cipher);
-                free(plain);
-                cipher = plain = NULL;
+                print_hex_array("Plain text", tmp_plain, plain_size);
+
+                aes_context.input = tmp_plain;
+                aes_context.input_len = plain_size;
+                aes_context.output = NULL;
+                aes_context.output_len = 0;
+                aes_result = aes_cbc_encryption(&aes_context);
+                if (aes_result != AES_SUCCESS) {
+                        printf("Encrypt error!! : %d\n", aes_result);
+                        (void)aes_context_release(&aes_context);
+                        return;
+                }
+
+                printf("Encrypted size: %d\n", aes_context.output_len);
+                print_hex_array("Encryption", aes_context.output,
+                                aes_context.output_len);
+                compare_result("Encryption", aes_context.output, tmp_cipher,
+                               cipher_size);
+
+                // take cipher(the padded memory) as new input
+                aes_context.input = aes_context.output;
+                aes_context.input_len = aes_context.output_len;
+                aes_context.output = NULL;
+                aes_context.output_len = 0;
+                aes_result = aes_cbc_decryption(&aes_context);
+                if (aes_result != AES_SUCCESS) {
+                        printf("Decrypt error!! : %d\n", aes_result);
+                        (void)aes_context_release(&aes_context);
+                        return;
+                }
+
+                printf("Decrypted size: %d\n", aes_context.output_len);
+                print_hex_array("Decryption", aes_context.output,
+                                aes_context.output_len);
+                compare_result("Decryption", aes_context.output, tmp_plain,
+                               plain_size);
+
+                (void)aes_context_release(&aes_context);
         }
 }
 #endif // TYPE_AES_CBC
@@ -178,43 +233,70 @@ static void aes_test_ctr(void)
         uint8_t tmp_nonce[N_AES_NONCE_SIZE];
         char *ptr_test, *ptr_cipher, *ptr_nonce;
 
-        uint8_t *cipher = NULL;
-        uint32_t cipher_size;
-        uint8_t *plain = NULL;
-        uint32_t plain_size;
-
         printf("=== AES-128 CTR test ===\n");
 
-        hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
-        aes_key_init(tmp_key);
+        struct aes_ctx aes_context;
+        enum aes_error aes_result;
 
         for (uint8_t test_idx = 0; test_idx < N_CBC_TEST; ++test_idx) {
                 printf("\n[TEST %d]\n", test_idx + 1);
+
+                // key may be different
+                hex_str_to_bytes(vector_key, tmp_key, N_AES_KEY_SIZE);
+                aes_key_init(&aes_context, tmp_key);
+
                 ptr_test = vector_text[test_idx];
                 ptr_cipher = vector_cipher[test_idx];
                 ptr_nonce = vector_nonce[test_idx];
 
                 hex_str_to_bytes(ptr_nonce, tmp_nonce, N_AES_NONCE_SIZE);
-                aes_nonce_init(tmp_nonce);
+                aes_nonce_init(&aes_context, tmp_nonce);
                 print_hex_array("Init Nonce", tmp_nonce, N_AES_NONCE_SIZE);
 
-                uint32_t input_size = strlen(ptr_test) / 2;
-                hex_str_to_bytes(ptr_test, tmp_plain, input_size);
-                uint32_t output_size = strlen(ptr_cipher) / 2;
-                hex_str_to_bytes(ptr_cipher, tmp_cipher, output_size);
+                uint32_t plain_size = strlen(ptr_test) / 2;
+                hex_str_to_bytes(ptr_test, tmp_plain, plain_size);
+                uint32_t cipher_size = strlen(ptr_cipher) / 2;
+                hex_str_to_bytes(ptr_cipher, tmp_cipher, cipher_size);
 
-                print_hex_array("Plain text", tmp_plain, input_size);
-                cipher = aes_encryption(tmp_plain, input_size, &cipher_size);
-                printf("Encrypted size: %d\n", cipher_size);
-                print_hex_array("Encryption", cipher, cipher_size);
-                compare_result("Encryption", cipher, tmp_cipher, output_size);
-                plain = aes_decryption(cipher, cipher_size, &plain_size);
-                printf("Decrypted size: %d\n", plain_size);
-                print_hex_array("Decryption", plain, plain_size);
-                compare_result("Decryption", plain, tmp_plain, input_size);
-                free(cipher);
-                free(plain);
-                cipher = plain = NULL;
+                print_hex_array("Plain text", tmp_plain, plain_size);
+
+                aes_context.input = tmp_plain;
+                aes_context.input_len = plain_size;
+                aes_context.output = NULL;
+                aes_context.output_len = 0;
+                aes_result = aes_ctr_encryption(&aes_context);
+                if (aes_result != AES_SUCCESS) {
+                        printf("Encrypt error!! : %d\n", aes_result);
+                        (void)aes_context_release(&aes_context);
+                        return;
+                }
+
+                printf("Encrypted size: %d\n", aes_context.output_len);
+                print_hex_array("Encryption", aes_context.output,
+                                aes_context.output_len);
+                compare_result("Encryption", aes_context.output, tmp_cipher,
+                               cipher_size);
+
+                // take cipher(the padded memory) as new input
+                aes_context.input = aes_context.output;
+                aes_context.input_len = aes_context.output_len;
+                aes_context.output = NULL;
+                aes_context.output_len = 0;
+                // AES-CTR use same encpyt/decrypt process 
+                aes_result = aes_ctr_encryption(&aes_context);
+                if (aes_result != AES_SUCCESS) {
+                        printf("Decrypt error!! : %d\n", aes_result);
+                        (void)aes_context_release(&aes_context);
+                        return;
+                }
+
+                printf("Decrypted size: %d\n", aes_context.output_len);
+                print_hex_array("Decryption", aes_context.output,
+                                aes_context.output_len);
+                compare_result("Decryption", aes_context.output, tmp_plain,
+                               plain_size);
+
+                (void)aes_context_release(&aes_context);
         }
 }
 #endif // TYPE_AES_CTR
