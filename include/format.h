@@ -1,5 +1,5 @@
-#ifndef _FORMAT_H_
-#define _FORMAT_H_
+#ifndef FORMAT_H_INCLUDED
+#define FORMAT_H_INCLUDED
 
 #include <ctype.h>
 #include <stdint.h>
@@ -14,4 +14,4 @@ enum format_error_type {
 
 extern int hex_str_to_bytes(char *src, uint8_t *dst, uint32_t array_size);
 
-#endif // _FORMAT_H_
+#endif // FORMAT_H_INCLUDED

@@ -8,7 +8,7 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key);
 #if defined(TYPE_AES_CBC)
 static void aes_step_cbc_pre_block_xor(uint8_t *state, uint8_t *vector);
 #endif
-#if defined(TYPE_AES_CTR)
+#if defined(TYPE_AES_CTR) || defined(TYPE_AES_GCM)
 static void aes_step_ctr_key_stream_xor(uint8_t *state, uint8_t *key_stream);
 #endif
 static void aes_step_sub_bytes(uint8_t *state);
@@ -20,25 +20,18 @@ static void aes_step_inv_sub_bytes(uint8_t *state);
 static void aes_step_inv_shift_rows(uint8_t *state);
 static void aes_step_inv_mix_columns(uint8_t *state);
 #endif
-static uint8_t gf_multiply_8(uint8_t a, uint8_t b);
+static uint8_t gf8_multiply(uint8_t a, uint8_t b);
 #if defined(TYPE_AES_GCM)
-static void gf_multiply_128(uint8_t *a, uint8_t *b);
-static void ghash(uint8_t *H, uint8_t *data, uint32_t len, uint8_t *output);
+static void be_set_u64(uint8_t *x, uint64_t val);
+static void be_set_u32(uint8_t *x, uint32_t val);
+static inline uint32_t be_get_u32(const uint8_t *x);
+static void gf128_right_shift(uint8_t *v);
+static void gf128_multiply(uint8_t *x, uint8_t *y, uint8_t *z);
+static void ghash(uint8_t *h, uint8_t *data, size_t data_len, uint8_t *y);
 #endif
 #if defined(TYPE_AES_GCM) || defined(TYPE_AES_CTR)
-static void increment_uint128(uint8_t *bytes);
+static void increment_uint16(uint8_t *bytes);
 #endif
-
-/**
- * @brief       initialize AES key
- * @param       *ctx, *key: key must point to 16-byte memory
- * @return      none
- */
-void aes_key_init(struct aes_ctx *ctx, uint8_t *key)
-{
-        memcpy(ctx->aes_key, key, N_AES_KEY_SIZE);
-        aes_key_expansion(ctx->aes_round_key, ctx->aes_key);
-}
 
 /**
  * @brief       clear AES context
@@ -51,17 +44,35 @@ enum aes_error aes_context_release(struct aes_ctx *ctx)
                 return AES_INVALID_CONTEXT;
         }
 
-        memset(ctx->aes_key, 0x00, N_AES_KEY_SIZE);
-        memset(ctx->aes_round_key, 0x00, N_AES_KEY_EXPAND_SIZE);
+        memset(ctx->key, 0x00, N_AES_KEY_SIZE);
+        memset(ctx->round_key, 0x00, N_AES_KEY_EXPAND_SIZE);
 #if defined(TYPE_AES_CBC)
-        memset(ctx->aes_init_vector, 0x00, N_AES_KEY_SIZE);
+        memset(ctx->init_vector, 0x00, N_AES_KEY_SIZE);
 #endif
-        free(ctx->input);
-        ctx->input_len = 0;
+#if defined(TYPE_AES_GCM)
+        if (ctx->aad_len > 0) {
+                free(ctx->aad);
+                ctx->aad_len = 0;
+        }
+#endif
         free(ctx->output);
         ctx->output_len = 0;
-
+#if defined(TYPE_AES_GCM)
+        memset(ctx->tag, 0x00, N_AES_TAG_SIZE);
+        ctx->tag_len = 0;
+#endif
         return AES_SUCCESS;
+}
+
+/**
+ * @brief       initialize AES key
+ * @param       *ctx, *key: key must point to 16-byte memory
+ * @return      none
+ */
+void aes_init_key(struct aes_ctx *ctx, uint8_t *key)
+{
+        memcpy(ctx->key, key, N_AES_KEY_SIZE);
+        aes_key_expansion(ctx->round_key, ctx->key);
 }
 
 #if defined(TYPE_AES_CBC)
@@ -70,9 +81,9 @@ enum aes_error aes_context_release(struct aes_ctx *ctx)
  * @param       *ctx, *iv: iv must point to 16-byte memory
  * @return      none
  */
-void aes_iv_init(struct aes_ctx *ctx, uint8_t *iv)
+void aes_init_iv(struct aes_ctx *ctx, uint8_t *iv)
 {
-        memcpy(ctx->aes_init_vector, iv, N_AES_KEY_SIZE);
+        memcpy(ctx->init_vector, iv, N_AES_KEY_SIZE);
 }
 #endif
 
@@ -82,122 +93,173 @@ void aes_iv_init(struct aes_ctx *ctx, uint8_t *iv)
  * @param       *ctx, *nonce: nonce must point to 16-byte memory
  * @return      none
  */
-void aes_nonce_init(struct aes_ctx *ctx, uint8_t *nonce)
+void aes_init_nonce(struct aes_ctx *ctx, uint8_t *nonce)
 {
-        memcpy(ctx->aes_nonce, nonce, N_AES_NONCE_SIZE);
+        memcpy(ctx->nonce, nonce, N_AES_NONCE_SIZE);
 }
 #endif
 
 #if defined(TYPE_AES_GCM)
-void aes_ghash_h_init(void)
+/**
+ * @brief       initialize AES-GCM AAD
+ * @param       *ctx, *aad, aad_len: aad must point to valid memory
+                                        with data size aad_len
+ * @return      aes_error:      invalid *aad, for addlen != 0
+                                failed malloc for ctx->aad
+ */
+enum aes_error aes_init_aad(struct aes_ctx *ctx, uint8_t *aad,
+                            uint64_t aad_len)
 {
-        uint8_t tmp_zero[16] = {0};
-        uint8_t cipher_size = 16;
-        uint8_t *cipher;
-        cipher = aes_ecb_encryption(tmp_zero, N_AES_STATE_SIZE, &cipher_size);
-        memcpy(aes_ghash_h, cipher, N_AES_STATE_SIZE);
-        free(cipher);
-}
-
-void aes_j0_init(uint8_t *iv, uint32_t iv_size)
-{
-        if (iv_size == N_AES_IV_SIZE) {
-                // 12-byte iv: attach 0x00000001
-                memcpy(aes_j0, iv, iv_size);
-                aes_j0[N_AES_IV_SIZE] = 0x00;
-                aes_j0[N_AES_IV_SIZE + 1] = 0x00;
-                aes_j0[N_AES_IV_SIZE + 2] = 0x00;
-                aes_j0[N_AES_IV_SIZE + 3] = 0x01;
-        } else {
-                // padding as multiples of 16-byte, 
-                //      and attach 8-byte iv bits by Big-endian
-                
-                uint32_t n_padded = ((iv_size + 15) / 16) * 16;
-                uint32_t n_total = n_padded + 8;
-                uint8_t *ptr_iv = (uint8_t *)malloc(n_total);
-
-                memcpy(ptr_iv, iv, iv_size);
-                memset(ptr_iv + iv_size, 0x00, (n_padded - iv_size));
-                uint64_t iv_bit = (uint64_t)iv_size * 8;
-
-                for (uint32_t i = 0; i < 8; ++i) {
-                        ptr_iv[n_padded + i] = (iv_bit >> (56 - i * 8)) & 0xFF;
+        if (aad_len != 0) {
+                if (aad == NULL) {
+                        return AES_INVALID_INPUT;
                 }
 
-                ghash(aes_ghash_h, ptr_iv, n_total, aes_j0);
-                free(ptr_iv);
+                uint8_t *tmp_aad = (uint8_t *)malloc(aad_len);
+                if (tmp_aad == NULL) {
+                        return AES_MALLOC_FAIL;
+                }
+                memcpy(tmp_aad, aad, aad_len);
+                ctx->aad = tmp_aad;
+                ctx->aad_len = aad_len;
+        } else {
+                ctx->aad = NULL;
+                ctx->aad_len = 0;
         }
+
+        return AES_SUCCESS;
 }
 
-static uint8_t *aes_generate_gmac(uint8_t *aad, uint32_t aad_len,
-                                  uint8_t *cipher, uint32_t cipher_len)
+/**
+ * @brief       initialize AES-GCM H
+ * @param       *ctx
+ * @return      aes_error: if AES-ECB encrypt fail
+ */
+enum aes_error aes_init_ghash_h(struct aes_ctx *ctx)
 {
-        uint8_t *tmp;
-        uint32_t tmp_len;
-        uint32_t pad_aad_len, pad_cipher_len;
+        uint8_t tmp_zero[16];
+        enum aes_error aes_result;
+        struct aes_ctx ctx_h;
 
-        if (aad == NULL || cipher == NULL) {
-                // invalid input memory
-                return NULL;
+        memset(tmp_zero, 0x00, 16);
+
+        aes_init_key(&ctx_h, ctx->key);
+        ctx_h.input = tmp_zero;
+        ctx_h.input_len = 16;
+        ctx_h.output = NULL;
+        ctx_h.output_len = 0;
+
+        aes_result = aes_ecb_encryption(&ctx_h);
+
+        if (aes_result != AES_SUCCESS) {
+                return aes_result;
         }
 
-        if (aad_len > 0) {
-                pad_aad_len = ((aad_len + 15) / 16) * 16;
+        memcpy(ctx->ghash_h, ctx_h.output, N_AES_STATE_SIZE);
+        free(ctx_h.output);
+
+        return AES_SUCCESS;
+}
+
+/**
+ * @brief       initialize AES-GCM J0
+ * @param       *ctx, *iv, iv_len: iv must point to valid memory
+                                        with data size iv_len
+ * @return      aes_error:      failed malloc for padded iv
+ */
+enum aes_error aes_init_j0(struct aes_ctx *ctx, uint8_t *iv, uint64_t iv_len)
+{
+        if (iv_len == N_AES_IV_SIZE) {
+                // 12-byte iv: attach 0x00000001
+                memcpy(ctx->j0, iv, iv_len);
+                (ctx->j0)[N_AES_IV_SIZE] = 0x00;
+                (ctx->j0)[N_AES_IV_SIZE + 1] = 0x00;
+                (ctx->j0)[N_AES_IV_SIZE + 2] = 0x00;
+                (ctx->j0)[N_AES_IV_SIZE + 3] = 0x01;
         } else {
-                pad_aad_len = 0;
+                // padding to multiples of 16-byte,
+                //      then attach 8-byte iv bits in Big-endian
+
+                uint64_t n_padded = ((iv_len + 15) / 16) * 16;
+                uint64_t n_total = n_padded + 8;
+                uint8_t *tmp_iv = (uint8_t *)malloc(n_total);
+
+                if (tmp_iv == NULL) {
+                        return AES_MALLOC_FAIL;
+                }
+
+                memcpy(tmp_iv, iv, iv_len);
+                memset(tmp_iv + iv_len, 0x00, (n_padded - iv_len));
+                uint64_t iv_bit = (uint64_t)iv_len * 8;
+                be_set_u64(tmp_iv + n_padded, iv_bit);
+
+                ghash(ctx->ghash_h, tmp_iv, n_total, ctx->j0);
+                free(tmp_iv);
         }
-        pad_cipher_len = ((cipher_len + 15) / 16) * 16;
 
-        tmp_len = pad_aad_len + pad_cipher_len + 8 + 8;
-        tmp = (uint8_t *)malloc(tmp_len);
+        return AES_SUCCESS;
+}
 
-        if (tmp == NULL) {
-                // failed to alloc tmp
-                return NULL;
-        }
-
-        if (pad_aad_len > 0) {
-                memcpy(tmp, aad, aad_len);
-                memset(tmp + aad_len, 0x00, pad_aad_len - aad_len);
-        }
-        memcpy(tmp + pad_aad_len, cipher, cipher_len);
-        memset(tmp + pad_aad_len + cipher_len, 0x00, pad_cipher_len - cipher_len);
-
-        uint64_t aad_bit = (uint64_t)aad_len * 8;
-        uint64_t cipher_bit = (uint64_t)cipher_len * 8;
-
-        memcpy(tmp + pad_aad_len + cipher_len, &aad_bit, 8);
-        memcpy(tmp + pad_aad_len + cipher_len + 8, &cipher_bit, 8);
-
-        uint8_t tmp_ghash[16];
-        uint8_t *cipher_j0;
-        uint32_t cipher_j0_size;
-        uint8_t *tag = (uint8_t *)malloc(16);
-        
+/**
+ * @brief       set tag for AES-GCM decryption
+ * @param       *ctx, *tag, tag_len: the input tag will be compared
+                                        in the range tag_len
+ * @return      aes_error:      invalid tag memory
+ */
+enum aes_error aes_init_tag(struct aes_ctx *ctx, uint8_t *tag,
+                            uint8_t tag_len)
+{
         if (tag == NULL) {
-                /// failed to alloc tag
-                free(tmp);
-                return NULL;
+                return AES_INVALID_INPUT;
         }
 
-        ghash(aes_ghash_h, tmp, tmp_len, tmp_ghash);
-        cipher_j0 = *aes_ecb_encryption(aes_j0, 16, &cipher_j0_size);
+        memcpy(ctx->tag, tag, tag_len);
+        ctx->tag_len = tag_len;
 
-        if (cipher_j0 == NULL) {
-                // failed to encrpt J0
-                free(tmp);
-                free(tag);
-                return NULL;
+        return AES_SUCCESS;
+}
+
+/**
+ * @brief       Generate AES-GCM tag
+ * @param       *ctx, *cipher, cipher_len, *tag:
+                        get aad, aad_len, key from *ctx
+                        generate tag in memory of *tag
+ * @return      aes_error:      failed malloc for padded iv
+ */
+static enum aes_error aes_generate_gmac(struct aes_ctx *ctx, uint8_t *cipher,
+                                        size_t cipher_len, uint8_t *tag)
+{
+        uint8_t tmp_tag[N_AES_TAG_SIZE] = {0};
+        uint8_t len_buf[16];
+
+        if (ctx->aad_len > 0) {
+                ghash(ctx->ghash_h, ctx->aad, ctx->aad_len, tmp_tag);
+        }
+        ghash(ctx->ghash_h, cipher, cipher_len, tmp_tag);
+        be_set_u64(len_buf, ctx->aad_len * 8);
+        be_set_u64(len_buf + 8, cipher_len * 8);
+        ghash(ctx->ghash_h, len_buf, sizeof(len_buf), tmp_tag);
+
+        struct aes_ctx ctx_j0;
+
+        aes_init_key(&ctx_j0, ctx->key);
+        ctx_j0.input = ctx->j0;
+        ctx_j0.input_len = 16;
+        ctx_j0.output = NULL;
+        ctx_j0.output_len = 0;
+        enum aes_error aes_result = aes_ecb_encryption(&ctx_j0);
+        if (aes_result != AES_SUCCESS) {
+                return aes_result;
         }
 
-        memcpy(tag, tmp_ghash, 16);
         for (uint8_t i = 0; i < N_AES_STATE_SIZE; ++i) {
-                tag[i] ^= cipher_j0[i];
+                tmp_tag[i] ^= ctx_j0.output[i];
         }
-        
-        free(tmp);
-        free(cipher_j0);
-        return tag;
+        free(ctx_j0.output);
+
+        memcpy(tag, tmp_tag, N_AES_TAG_SIZE);
+
+        return AES_SUCCESS;
 }
 #endif // TYPE_AES_GCM
 
@@ -220,14 +282,12 @@ enum aes_error aes_ecb_encryption(struct aes_ctx *ctx)
                 return AES_INVALID_INPUT;
         }
 
-        // output memory should not exist
         if (ctx->output != NULL || ctx->output_len != 0) {
-                free(ctx->output);
-                ctx->output_len = 0;
+                return AES_UNCLEARED_OUTPUT;
         }
 
         // allocate memory for PCKS#7
-        uint32_t n_block = (ctx->input_len / N_AES_STATE_SIZE) + 1;
+        uint64_t n_block = (ctx->input_len / N_AES_STATE_SIZE) + 1;
         uint8_t *tmp_output = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
 
         if (tmp_output == NULL) {
@@ -235,14 +295,14 @@ enum aes_error aes_ecb_encryption(struct aes_ctx *ctx)
         }
 
         memcpy(tmp_output, ctx->input, ctx->input_len);
-        uint32_t tmp_output_len = ctx->input_len;
+        uint64_t tmp_output_len = ctx->input_len;
 
         pkcs7_padding(tmp_output, &tmp_output_len, N_AES_STATE_SIZE);
 
-        for (uint32_t b = 0; b < n_block; ++b) {
+        for (uint64_t b = 0; b < n_block; ++b) {
                 uint8_t *block = tmp_output + (b * N_AES_STATE_SIZE);
 
-                aes_step_add_round_key(block, ctx->aes_round_key);
+                aes_step_add_round_key(block, ctx->round_key);
 
                 for (uint8_t r = 0; r < N_AES_ROUND; ++r) {
                         uint8_t round_k = r + 1;
@@ -257,7 +317,7 @@ enum aes_error aes_ecb_encryption(struct aes_ctx *ctx)
 
                         aes_step_add_round_key(
                             block,
-                            (ctx->aes_round_key + (round_k * N_AES_KEY_SIZE)));
+                            (ctx->round_key + (round_k * N_AES_KEY_SIZE)));
                 }
         }
 
@@ -287,13 +347,11 @@ enum aes_error aes_ecb_decryption(struct aes_ctx *ctx)
                 return AES_INVALID_INPUT;
         }
 
-        // output memory should not exist
         if (ctx->output != NULL || ctx->output_len != 0) {
-                free(ctx->output);
-                ctx->output_len = 0;
+                return AES_UNCLEARED_OUTPUT;
         }
 
-        uint32_t n_block = (ctx->input_len / N_AES_STATE_SIZE);
+        uint64_t n_block = (ctx->input_len / N_AES_STATE_SIZE);
         uint8_t *tmp_output = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
 
         if (tmp_output == NULL) {
@@ -301,14 +359,13 @@ enum aes_error aes_ecb_decryption(struct aes_ctx *ctx)
         }
 
         memcpy(tmp_output, ctx->input, ctx->input_len);
-        uint32_t tmp_output_len = ctx->input_len;
+        uint64_t tmp_output_len = ctx->input_len;
 
-        for (uint32_t b = 0; b < n_block; ++b) {
+        for (uint64_t b = 0; b < n_block; ++b) {
                 uint8_t *block = tmp_output + (b * N_AES_STATE_SIZE);
 
-                aes_step_add_round_key(
-                    block,
-                    (ctx->aes_round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
+                aes_step_add_round_key(block, (ctx->round_key +
+                                               (N_AES_ROUND * N_AES_KEY_SIZE)));
 
                 for (uint8_t r = N_AES_ROUND; r > 0; --r) {
                         uint8_t round_k = r - 1;
@@ -317,7 +374,7 @@ enum aes_error aes_ecb_decryption(struct aes_ctx *ctx)
                         aes_step_inv_sub_bytes(block);
                         aes_step_add_round_key(
                             block,
-                            (ctx->aes_round_key + (round_k * N_AES_KEY_SIZE)));
+                            (ctx->round_key + (round_k * N_AES_KEY_SIZE)));
 
                         if (round_k > 0) {
                                 aes_step_inv_mix_columns(block);
@@ -353,14 +410,12 @@ enum aes_error aes_cbc_encryption(struct aes_ctx *ctx)
                 return AES_INVALID_INPUT;
         }
 
-        // output memory should not exist
         if (ctx->output != NULL || ctx->output_len != 0) {
-                free(ctx->output);
-                ctx->output_len = 0;
+                return AES_UNCLEARED_OUTPUT;
         }
 
         // allocate memory for PCKS#7
-        uint32_t n_block = (ctx->input_len / N_AES_STATE_SIZE) + 1;
+        uint64_t n_block = (ctx->input_len / N_AES_STATE_SIZE) + 1;
         uint8_t *tmp_output = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
 
         if (tmp_output == NULL) {
@@ -368,22 +423,22 @@ enum aes_error aes_cbc_encryption(struct aes_ctx *ctx)
         }
 
         memcpy(tmp_output, ctx->input, ctx->input_len);
-        uint32_t tmp_output_len = ctx->input_len;
+        uint64_t tmp_output_len = ctx->input_len;
 
         pkcs7_padding(tmp_output, &tmp_output_len, N_AES_STATE_SIZE);
 
-        for (uint32_t b = 0; b < n_block; ++b) {
+        for (uint64_t b = 0; b < n_block; ++b) {
                 uint8_t *block = tmp_output + (b * N_AES_STATE_SIZE);
                 uint8_t *tmp_iv;
 
                 if (b == 0) {
-                        tmp_iv = ctx->aes_init_vector;
+                        tmp_iv = ctx->init_vector;
                 } else {
                         tmp_iv = tmp_output + ((b - 1) * N_AES_STATE_SIZE);
                 }
                 aes_step_cbc_pre_block_xor(block, tmp_iv);
 
-                aes_step_add_round_key(block, ctx->aes_round_key);
+                aes_step_add_round_key(block, ctx->round_key);
 
                 for (uint8_t r = 0; r < N_AES_ROUND; ++r) {
                         uint8_t round_k = r + 1;
@@ -397,7 +452,7 @@ enum aes_error aes_cbc_encryption(struct aes_ctx *ctx)
 
                         aes_step_add_round_key(
                             block,
-                            (ctx->aes_round_key + (round_k * N_AES_KEY_SIZE)));
+                            (ctx->round_key + (round_k * N_AES_KEY_SIZE)));
                 }
         }
 
@@ -425,21 +480,19 @@ enum aes_error aes_cbc_decryption(struct aes_ctx *ctx)
                 return AES_INVALID_INPUT;
         }
 
-        // output memory should not exist
         if (ctx->output != NULL || ctx->output_len != 0) {
-                free(ctx->output);
-                ctx->output_len = 0;
+                return AES_UNCLEARED_OUTPUT;
         }
 
-        uint32_t n_block = (ctx->input_len / N_AES_STATE_SIZE);
+        uint64_t n_block = (ctx->input_len / N_AES_STATE_SIZE);
         uint8_t *tmp_output = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
-        
+
         if (tmp_output == NULL) {
                 return AES_MALLOC_FAIL;
         }
 
         memcpy(tmp_output, ctx->input, ctx->input_len);
-        uint32_t tmp_output_len = ctx->input_len;
+        uint64_t tmp_output_len = ctx->input_len;
 
         // AES-CBC: use backward decryption.
         for (int32_t b = (n_block - 1); b >= 0; --b) {
@@ -447,14 +500,13 @@ enum aes_error aes_cbc_decryption(struct aes_ctx *ctx)
                 uint8_t *tmp_iv;
 
                 if (b == 0) {
-                        tmp_iv = ctx->aes_init_vector;
+                        tmp_iv = ctx->init_vector;
                 } else {
                         tmp_iv = tmp_output + ((b - 1) * N_AES_STATE_SIZE);
                 }
 
-                aes_step_add_round_key(
-                    block,
-                    (ctx->aes_round_key + (N_AES_ROUND * N_AES_KEY_SIZE)));
+                aes_step_add_round_key(block, (ctx->round_key +
+                                               (N_AES_ROUND * N_AES_KEY_SIZE)));
 
                 for (uint8_t r = N_AES_ROUND; r > 0; --r) {
                         uint8_t round_k = r - 1;
@@ -463,7 +515,7 @@ enum aes_error aes_cbc_decryption(struct aes_ctx *ctx)
                         aes_step_inv_sub_bytes(block);
                         aes_step_add_round_key(
                             block,
-                            (ctx->aes_round_key + (round_k * N_AES_KEY_SIZE)));
+                            (ctx->round_key + (round_k * N_AES_KEY_SIZE)));
 
                         if (round_k > 0) {
                                 aes_step_inv_mix_columns(block);
@@ -500,15 +552,13 @@ enum aes_error aes_ctr_encryption(struct aes_ctx *ctx)
                 return AES_INVALID_INPUT;
         }
 
-        // output memory should not exist
         if (ctx->output != NULL || ctx->output_len != 0) {
-                free(ctx->output);
-                ctx->output_len = 0;
+                return AES_UNCLEARED_OUTPUT;
         }
 
         // use 16-byte aligned memory for XOR operation
         //      although AES-CTR don't need padding plain text
-        uint32_t n_block = (ctx->input_len / N_AES_STATE_SIZE) +
+        uint64_t n_block = (ctx->input_len / N_AES_STATE_SIZE) +
                            (ctx->input_len % N_AES_STATE_SIZE == 0 ? 0 : 1);
         uint8_t *tmp_output = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
 
@@ -517,38 +567,39 @@ enum aes_error aes_ctr_encryption(struct aes_ctx *ctx)
         }
 
         memcpy(tmp_output, ctx->input, ctx->input_len);
-        uint32_t tmp_output_len = ctx->input_len;
+        uint64_t tmp_output_len = ctx->input_len;
         uint8_t key_stream[N_AES_STATE_SIZE];
-        memcpy(key_stream, ctx->aes_nonce, N_AES_NONCE_SIZE);
+        memcpy(key_stream, ctx->nonce, N_AES_NONCE_SIZE);
 #if (N_AES_NONCE_SIZE == N_AES_NONCE_NIST)
         // for NIST, 96-bit nonce | 32-bit block_number
         memset(key_stream + N_AES_NONCE_SIZE, 0x00, 4);
 #endif
 
-        for (uint32_t b = 0; b < n_block; ++b) {
+        for (uint64_t b = 0; b < n_block; ++b) {
                 uint8_t *block = tmp_output + (b * N_AES_STATE_SIZE);
+                uint8_t tmp_key_stream[N_AES_STATE_SIZE];
+                memcpy(tmp_key_stream, key_stream, N_AES_NONCE_SIZE);
 
-                aes_step_add_round_key(key_stream, ctx->aes_round_key);
+                aes_step_add_round_key(tmp_key_stream, ctx->round_key);
 
                 for (uint8_t r = 0; r < N_AES_ROUND; ++r) {
                         uint8_t round_k = r + 1;
 
-                        aes_step_sub_bytes(key_stream);
+                        aes_step_sub_bytes(tmp_key_stream);
 
-                        aes_step_shift_rows(key_stream);
+                        aes_step_shift_rows(tmp_key_stream);
 
                         if (round_k < N_AES_ROUND) {
-                                aes_step_mix_columns(key_stream);
+                                aes_step_mix_columns(tmp_key_stream);
                         }
 
                         aes_step_add_round_key(
-                            key_stream,
-                            (ctx->aes_round_key + (round_k * N_AES_KEY_SIZE)));
+                            tmp_key_stream,
+                            (ctx->round_key + (round_k * N_AES_KEY_SIZE)));
                 }
 
-                aes_step_ctr_key_stream_xor(block, key_stream);
-
-                increment_uint128(key_stream);
+                aes_step_ctr_key_stream_xor(block, tmp_key_stream);
+                increment_uint16(key_stream);
         }
 
         ctx->output = tmp_output;
@@ -558,7 +609,200 @@ enum aes_error aes_ctr_encryption(struct aes_ctx *ctx)
 }
 #endif // TYPE_AES_CTR
 
+#if defined(TYPE_AES_GCM)
+/**
+ * @brief       AES-GCM encryption
+ * @param       *ctx:   ctx must be a valid object
+                        ctx->input must be valid memory
+                                with the length ctx->input_len
+                        ctx->output should be cleared!
+ * @return      aes_error
+ */
+enum aes_error aes_gcm_encryption(struct aes_ctx *ctx)
+{
+        if (ctx == NULL) {
+                return AES_INVALID_CONTEXT;
+        }
 
+        if (ctx->input == NULL || ctx->input_len == 0) {
+                return AES_INVALID_INPUT;
+        }
+
+        if (ctx->output != NULL || ctx->output_len != 0) {
+                return AES_UNCLEARED_OUTPUT;
+        }
+
+        if (ctx->output != NULL || ctx->output_len != 0) {
+                return AES_UNCLEARED_OUTPUT;
+        }
+
+        // use 16-byte aligned memory for XOR operation
+        //      although plain text doesn't need padding
+        uint64_t n_block = (ctx->input_len / N_AES_STATE_SIZE) +
+                           (ctx->input_len % N_AES_STATE_SIZE == 0 ? 0 : 1);
+
+        if (!(n_block < (uint64_t)0xFFFFFFFF)) {
+                // AES-GCM: block must less than 2^32-1
+                return AES_ILLEGAL_LEN;
+        }
+
+        uint8_t *tmp_output = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
+
+        if (tmp_output == NULL) {
+                return AES_MALLOC_FAIL;
+        }
+
+        memcpy(tmp_output, ctx->input, ctx->input_len);
+        uint64_t tmp_output_len = ctx->input_len;
+
+        uint8_t key_stream[N_AES_STATE_SIZE];
+        memcpy(key_stream, ctx->j0, N_AES_STATE_SIZE);
+
+        for (uint64_t b = 0; b < n_block; ++b) {
+                uint8_t *block = tmp_output + (b * N_AES_STATE_SIZE);
+                uint8_t tmp_key_stream[N_AES_STATE_SIZE];
+
+                increment_uint16(key_stream);
+                memcpy(tmp_key_stream, key_stream, N_AES_STATE_SIZE);
+
+                aes_step_add_round_key(tmp_key_stream, ctx->round_key);
+
+                for (uint8_t r = 0; r < N_AES_ROUND; ++r) {
+                        uint8_t round_k = r + 1;
+
+                        aes_step_sub_bytes(tmp_key_stream);
+
+                        aes_step_shift_rows(tmp_key_stream);
+
+                        if (round_k < N_AES_ROUND) {
+                                aes_step_mix_columns(tmp_key_stream);
+                        }
+
+                        aes_step_add_round_key(
+                            tmp_key_stream,
+                            (ctx->round_key + (round_k * N_AES_KEY_SIZE)));
+                }
+
+                aes_step_ctr_key_stream_xor(block, tmp_key_stream);
+        }
+
+        ctx->output = tmp_output;
+        ctx->output_len = tmp_output_len;
+
+        enum aes_error aes_result =
+            aes_generate_gmac(ctx, ctx->output, ctx->output_len, ctx->tag);
+        if (aes_result != AES_SUCCESS) {
+                return aes_result;
+        }
+        ctx->tag_len = N_AES_TAG_SIZE;
+
+        return AES_SUCCESS;
+}
+
+/**
+ * @brief       AES-GCM decryption
+ * @param       *ctx:   ctx must be a valid object
+                        ctx->input must be valid memory
+                                with the length ctx->input_len
+                        ctx->output should be cleared!
+ * @return      aes_error
+ */
+enum aes_error aes_gcm_decryption(struct aes_ctx *ctx)
+{
+        if (ctx == NULL) {
+                return AES_INVALID_CONTEXT;
+        }
+
+        if (ctx->input == NULL || ctx->input_len == 0) {
+                return AES_INVALID_INPUT;
+        }
+
+        if (ctx->output != NULL || ctx->output_len != 0) {
+                return AES_UNCLEARED_OUTPUT;
+        }
+
+        if (ctx->output != NULL || ctx->output_len != 0) {
+                return AES_UNCLEARED_OUTPUT;
+        }
+
+        uint8_t tmp_tag[16];
+        enum aes_error aes_result =
+            aes_generate_gmac(ctx, ctx->input, ctx->input_len, tmp_tag);
+        if (aes_result != AES_SUCCESS) {
+                return aes_result;
+        }
+
+        if (ctx->tag_len <= 16 && ctx->tag_len >= 4) {
+                if (memcmp(ctx->tag, tmp_tag, ctx->tag_len) != 0) {
+                        // terminate decryption for illegal tag
+                        return AES_ILLEGAL_TAG;
+                }
+        } else {
+                return AES_INVALID_TAG_INPUT;
+        }
+
+        // use 16-byte aligned memory for XOR operation
+        //      although plain text doesn't need padding
+        uint64_t n_block = (ctx->input_len / N_AES_STATE_SIZE) +
+                           (ctx->input_len % N_AES_STATE_SIZE == 0 ? 0 : 1);
+
+        if (!(n_block < (uint64_t)0xFFFFFFFF)) {
+                // AES-GCM: block must less than 2^32-1
+                return AES_ILLEGAL_LEN;
+        }
+
+        uint8_t *tmp_output = (uint8_t *)malloc((n_block * N_AES_STATE_SIZE));
+
+        if (tmp_output == NULL) {
+                return AES_MALLOC_FAIL;
+        }
+
+        memcpy(tmp_output, ctx->input, ctx->input_len);
+        uint64_t tmp_output_len = ctx->input_len;
+
+        uint8_t key_stream[N_AES_STATE_SIZE];
+        memcpy(key_stream, ctx->j0, N_AES_STATE_SIZE);
+
+        for (uint64_t b = 0; b < n_block; ++b) {
+                uint8_t *block = tmp_output + (b * N_AES_STATE_SIZE);
+                uint8_t tmp_key_stream[N_AES_STATE_SIZE];
+
+                increment_uint16(key_stream);
+                memcpy(tmp_key_stream, key_stream, N_AES_STATE_SIZE);
+
+                aes_step_add_round_key(tmp_key_stream, ctx->round_key);
+
+                for (uint8_t r = 0; r < N_AES_ROUND; ++r) {
+                        uint8_t round_k = r + 1;
+
+                        aes_step_sub_bytes(tmp_key_stream);
+
+                        aes_step_shift_rows(tmp_key_stream);
+
+                        if (round_k < N_AES_ROUND) {
+                                aes_step_mix_columns(tmp_key_stream);
+                        }
+
+                        aes_step_add_round_key(
+                            tmp_key_stream,
+                            (ctx->round_key + (round_k * N_AES_KEY_SIZE)));
+                }
+
+                aes_step_ctr_key_stream_xor(block, tmp_key_stream);
+        }
+
+        ctx->output = tmp_output;
+        ctx->output_len = tmp_output_len;
+
+        return AES_SUCCESS;
+}
+#endif // TYPE_AES_GCM
+
+/**
+ * @brief       Expand AES key into round_key
+ * @param round_key     Output buffer of expanded keys
+ * @param key           Original key (must be initialized)
+ */
 static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
 {
         uint8_t word_idx, ref_idx;
@@ -607,7 +851,7 @@ static void aes_step_cbc_pre_block_xor(uint8_t *state, uint8_t *vector)
 }
 #endif // TYPE_AES_CBC
 
-#if defined(TYPE_AES_CTR)
+#if defined(TYPE_AES_CTR) || defined(TYPE_AES_GCM)
 static void aes_step_ctr_key_stream_xor(uint8_t *state, uint8_t *key_stream)
 {
         uint8_t i;
@@ -615,7 +859,7 @@ static void aes_step_ctr_key_stream_xor(uint8_t *state, uint8_t *key_stream)
                 state[i] ^= key_stream[i];
         }
 }
-#endif // TYPE_AES_CTR
+#endif // TYPE_AES_CTR || TYPE_AES_GCM
 
 static void aes_step_sub_bytes(uint8_t *state)
 {
@@ -667,15 +911,15 @@ static void aes_step_mix_columns(uint8_t *state)
                 tmp[2] = state[(offset + 2)];
                 tmp[3] = state[(offset + 3)];
 
-                state[offset] = gf_multiply_8(0x02, tmp[0]) ^
-                                gf_multiply_8(0x03, tmp[1]) ^ tmp[2] ^ tmp[3];
-                state[(offset + 1)] = tmp[0] ^ gf_multiply_8(0x02, tmp[1]) ^
-                                      gf_multiply_8(0x03, tmp[2]) ^ tmp[3];
+                state[offset] = gf8_multiply(0x02, tmp[0]) ^
+                                gf8_multiply(0x03, tmp[1]) ^ tmp[2] ^ tmp[3];
+                state[(offset + 1)] = tmp[0] ^ gf8_multiply(0x02, tmp[1]) ^
+                                      gf8_multiply(0x03, tmp[2]) ^ tmp[3];
                 state[(offset + 2)] = tmp[0] ^ tmp[1] ^
-                                      gf_multiply_8(0x02, tmp[2]) ^
-                                      gf_multiply_8(0x03, tmp[3]);
-                state[(offset + 3)] = gf_multiply_8(0x03, tmp[0]) ^ tmp[1] ^
-                                      tmp[2] ^ gf_multiply_8(0x02, tmp[3]);
+                                      gf8_multiply(0x02, tmp[2]) ^
+                                      gf8_multiply(0x03, tmp[3]);
+                state[(offset + 3)] = gf8_multiply(0x03, tmp[0]) ^ tmp[1] ^
+                                      tmp[2] ^ gf8_multiply(0x02, tmp[3]);
         }
 }
 
@@ -740,23 +984,23 @@ static void aes_step_inv_mix_columns(uint8_t *state)
                 tmp[3] = *(state + offset + 3);
 
                 *(state + offset) =
-                    gf_multiply_8(0x0e, tmp[0]) ^ gf_multiply_8(0x0b, tmp[1]) ^
-                    gf_multiply_8(0x0d, tmp[2]) ^ gf_multiply_8(0x09, tmp[3]);
+                    gf8_multiply(0x0e, tmp[0]) ^ gf8_multiply(0x0b, tmp[1]) ^
+                    gf8_multiply(0x0d, tmp[2]) ^ gf8_multiply(0x09, tmp[3]);
                 *(state + offset + 1) =
-                    gf_multiply_8(0x09, tmp[0]) ^ gf_multiply_8(0x0e, tmp[1]) ^
-                    gf_multiply_8(0x0b, tmp[2]) ^ gf_multiply_8(0x0d, tmp[3]);
+                    gf8_multiply(0x09, tmp[0]) ^ gf8_multiply(0x0e, tmp[1]) ^
+                    gf8_multiply(0x0b, tmp[2]) ^ gf8_multiply(0x0d, tmp[3]);
                 *(state + offset + 2) =
-                    gf_multiply_8(0x0d, tmp[0]) ^ gf_multiply_8(0x09, tmp[1]) ^
-                    gf_multiply_8(0x0e, tmp[2]) ^ gf_multiply_8(0x0b, tmp[3]);
+                    gf8_multiply(0x0d, tmp[0]) ^ gf8_multiply(0x09, tmp[1]) ^
+                    gf8_multiply(0x0e, tmp[2]) ^ gf8_multiply(0x0b, tmp[3]);
                 *(state + offset + 3) =
-                    gf_multiply_8(0x0b, tmp[0]) ^ gf_multiply_8(0x0d, tmp[1]) ^
-                    gf_multiply_8(0x09, tmp[2]) ^ gf_multiply_8(0x0e, tmp[3]);
+                    gf8_multiply(0x0b, tmp[0]) ^ gf8_multiply(0x0d, tmp[1]) ^
+                    gf8_multiply(0x09, tmp[2]) ^ gf8_multiply(0x0e, tmp[3]);
         }
 }
 #endif // !TYPE_AES_CTR
 
 // Galois Field multiply
-static uint8_t gf_multiply_8(uint8_t a, uint8_t b)
+static uint8_t gf8_multiply(uint8_t a, uint8_t b)
 {
         uint8_t res = 0;
 
@@ -772,48 +1016,111 @@ static uint8_t gf_multiply_8(uint8_t a, uint8_t b)
 }
 
 #if defined(TYPE_AES_GCM)
-static void gf_multiply_128(uint8_t *a, uint8_t *b)
+
+static void be_set_u64(uint8_t *x, uint64_t val)
 {
-        uint8_t res[16] = {0};
-        uint8_t tmp[16];
-        memcpy(tmp, b, 16);
-
-        for (uint8_t bit_idx = 0; bit_idx < 128; ++bit_idx) {
-                if (a[15] & 0x80) {
-                    for (uint8_t i = 0; i < 16; ++i) {
-                        res[i] ^= tmp[i];
-                    }
-                }
-
-                uint8_t carry = (tmp[15] & 0x01) ? 0xE1 : 0x00;
-                for (uint8_t i = 15; i > 0; --i) {
-                    tmp[i] = (tmp[i] >> 1) | ((tmp[i-1] & 0x01) << 7);
-                }
-                tmp[0] = (tmp[0] >> 1) ^ carry;
-
-                for (uint8_t i = 15; i > 0; --i) {
-                    a[i] = (a[i] << 1) | ((a[i-1] & 0x80) >> 7);
-                }
-                a[0] <<= 1;
+        for (uint8_t i = 0; i < 8; ++i) {
+                x[i] = (val >> (7 - i) * 8) & 0xff;
         }
-        memcpy(a, res, 16);
 }
 
-static void ghash(uint8_t *H, uint8_t *data, uint32_t len, uint8_t *output)
+static void be_set_u32(uint8_t *x, uint32_t val)
 {
-    uint8_t a[16] = {0};
-    for (uint32_t i = 0; i < len; i += 16) {
-        for (uint8_t j = 0; j < 16; ++j) {
-            a[j] ^= data[i + j];
+        for (uint8_t i = 0; i < 4; ++i) {
+                x[i] = (val >> (3 - i) * 8) & 0xff;
+        }
+}
+
+static inline uint32_t be_get_u32(const uint8_t *x)
+{
+        return (x[0] << 24) | (x[1] << 16) | (x[2] << 8) | x[3];
+}
+
+static void gf128_right_shift(uint8_t *v)
+{
+        uint32_t val;
+
+        for (int i = 0; i < 4; ++i) {
+                int offset = (3 - i) * 4;
+                val = be_get_u32(v + offset);
+                val >>= 1;
+                if (offset) {
+                        if (v[(offset - 1)] & 0x01) {
+                                val |= 0x80000000;
+                        }
+                }
+                be_set_u32(v + offset, val);
+        }
+}
+
+static void gf128_multiply(uint8_t *x, uint8_t *y, uint8_t *z)
+{
+        uint8_t v[16];
+
+        memset(z, 0, 16);
+        memcpy(v, y, 16);
+
+        // GF(2^128) = x^128 + x^7 + x^2 + x + 1
+        for (int byte_idx = 0; byte_idx < 16; byte_idx++) {
+                for (uint8_t bit_idx = 0; bit_idx < 8; bit_idx++) {
+                        if (x[byte_idx] & 1 << (7 - bit_idx)) {
+                                // bit == 1, z^=y
+                                for (uint8_t k = 0; k < 16; k++) {
+                                        z[k] ^= v[k];
+                                }
+                        }
+
+                        uint8_t carry = (v[15] & 0x01) ? 1 : 0;
+
+                        gf128_right_shift(v);
+
+                        if (carry) {
+                                // handle the carry bit, 0x87<<1 = 0xe1
+                                v[0] ^= 0xe1;
+                        }
+                }
+        }
+}
+
+static void ghash(uint8_t *h, uint8_t *data, size_t data_len, uint8_t *y)
+{
+        uint8_t *ptr_data = data;
+        uint8_t tmp[16];
+
+        size_t n_block = data_len / 16;
+
+        for (size_t i = 0; i < n_block; ++i) {
+                // XOR
+                for (uint8_t j = 0; j < 16; j++) {
+                        y[j] ^= ptr_data[j];
+                }
+
+                // GF(2^128) multiplication
+                gf128_multiply(y, h, tmp);
+                memcpy(y, tmp, 16);
+
+                ptr_data += 16;
         }
 
-        gf_multiply_128(a, H);
-    }
-    memcpy(output, a, 16);
+        // padding 0 for 16-byte aligned
+        if (data + data_len > ptr_data) {
+                size_t rest = data + data_len - ptr_data;
+                memcpy(tmp, ptr_data, rest);
+                memset(tmp + rest, 0x00, sizeof(tmp) - rest);
+
+                // XOR
+                for (uint8_t j = 0; j < 16; j++) {
+                        y[j] ^= tmp[j];
+                }
+
+                // GF(2^128) multiplication
+                gf128_multiply(y, h, tmp);
+                memcpy(y, tmp, 16);
+        }
 }
 #endif // TYPE_AES_GCM
 #if defined(TYPE_AES_GCM) || defined(TYPE_AES_CTR)
-static void increment_uint128(uint8_t *bytes)
+static void increment_uint16(uint8_t *bytes)
 {
         uint8_t carry = 1;
         for (int i = 15; i >= 0 && carry != 0; --i) {

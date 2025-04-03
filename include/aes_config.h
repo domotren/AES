@@ -1,5 +1,5 @@
-#ifndef _AES_CONFIG_H_
-#define _AES_CONFIG_H_
+#ifndef AES_CONFIG_H_INCLUDED
+#define AES_CONFIG_H_INCLUDED
 
 #include "format.h"
 #include "padding.h"
@@ -12,10 +12,10 @@
 // #define ALGO_AES_192
 // #define ALGO_AES_256
 
-#define TYPE_AES_ECB
+// #define TYPE_AES_ECB
 // #define TYPE_AES_CBC
 // #define TYPE_AES_CTR
-// #define TYPE_AES_GCM
+#define TYPE_AES_GCM
 
 #define N_AES_STATE_SIZE 16
 
@@ -40,4 +40,4 @@ extern const uint8_t rijndael_s_box[256];
 extern const uint8_t rijndael_inverse_s_box[256];
 extern const uint8_t rijndael_r_con[];
 
-#endif // _AES_CONFIG_H_
+#endif // AES_CONFIG_H_INCLUDED
