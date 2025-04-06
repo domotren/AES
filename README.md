@@ -1,8 +1,6 @@
----
-
 # AES
 **Advanced Encryption Standard (AES) implementation in C**
-*A lightweight C implementation targeting embedded systems, developed on Ubuntu (Windows 11, WSL2).*
+- A lightweight C implementation targeting embedded systems, developed on Ubuntu (Windows 11, WSL2).
 
 ---
 
