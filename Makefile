@@ -3,8 +3,28 @@ include colors.mk
 BUILD_SUCCESS = $(BOLD)$(GREEN)$(CHECKMARK)$(RESET)
 BUILD_ERROR   = $(BOLD)$(RED)$(CROSSMARK)$(RESET)
 
+# choose AES bits and mode
+# if not specified, enable AES-128 ECB in default
+ALGO ?= 128
+MODE ?= ECB
+CONFIG_FILE := config
+
+SUPPORTED_ALGOS := 128 192 256
+SUPPORTED_MODES := ECB CBC CTR GCM
+
+ifeq ($(filter $(ALGO), $(SUPPORTED_ALGOS)),)
+$(error ALGO must be one of: $(SUPPORTED_ALGOS))
+endif
+
+MODE_UPPER := $(shell echo $(MODE) | tr a-z A-Z)
+ifeq ($(filter $(MODE_UPPER), $(SUPPORTED_MODES)),)
+$(error MODE must be one of: $(SUPPORTED_MODES))
+endif
+
+CFLAGS += -DALGO_AES_$(ALGO) -DTYPE_AES_$(MODE_UPPER)
+
 CC = gcc
-CFLAGS = -Wall -Wextra -g -O2 -MMD
+CFLAGS += -Wall -Wextra -g -O2 -MMD -fsanitize=address
 INCLUDES = -Iinclude
 (LDFLAGS =)
 (LIBS =)
@@ -30,7 +50,7 @@ TARGET_TEST = $(BUILD_TEST_DIR)/aes_test
 
 vpath %c $(SRC_DIR) $(MAIN_DIR) $(TEST_DIR)
 
-all: $(TARGET_MAIN) $(TARGET_TEST)
+all: $(CONFIG_FILE) $(TARGET_MAIN) $(TARGET_TEST)
 
 $(TARGET_MAIN): $(OBJS) $(MAIN_OBJS) | $(BUILD_MAIN_DIR)
 	@if ! $(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS); then \
@@ -46,7 +66,7 @@ $(TARGET_TEST): $(OBJS) $(TEST_OBJS) | $(BUILD_TEST_DIR)
 	fi
 	@echo "$(BUILD_SUCCESS) Build test program successful"
 
-$(BUILD_OBJ_DIR)/%.o: %.c | $(BUILD_OBJ_DIR)
+$(BUILD_OBJ_DIR)/%.o: %.c $(CONFIG_FILE) | $(BUILD_OBJ_DIR)
 	@if ! $(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@; then \
 		echo "$(BUILD_ERROR) Failed to compile $<"; \
 		exit 1; \
@@ -57,10 +77,23 @@ $(BUILD_DIR) $(BUILD_OBJ_DIR) $(BUILD_MAIN_DIR) $(BUILD_TEST_DIR):
 	mkdir -p $@
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(CONFIG_FILE)
 
 -include $(OBJS:.o=.d)
 -include $(MAIN_OBJS:.o=.d)
 -include $(TEST_OBJS:.o=.d)
 
 .PHONY: all clean
+
+.PHONY: FORCE
+FORCE:
+
+$(CONFIG_FILE): FORCE
+	@echo "$(ALGO)-$(MODE)" > $(CONFIG_FILE).tmp
+	@if ! cmp -s $(CONFIG_FILE).tmp $(CONFIG_FILE); then \
+		mv $(CONFIG_FILE).tmp $(CONFIG_FILE); \
+		echo "Config updated";\
+	else \
+		rm -f $(CONFIG_FILE).tmp; \
+		echo "Config unchanged"; \
+	fi

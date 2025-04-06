@@ -8,15 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ALGO_AES_128
-// #define ALGO_AES_192
-// #define ALGO_AES_256
-
-#define TYPE_AES_ECB
-// #define TYPE_AES_CBC
-// #define TYPE_AES_CTR
-// #define TYPE_AES_GCM
-
 #define N_AES_STATE_SIZE 16
 
 #define N_AES_NONCE_NIST 12
