@@ -1,0 +1,26 @@
+# AES-128 CBC test vectors
+# refer to https://github.com/ircmaxell/quality-checker/blob/master/tmp/gh_18/PHP-PasswordLib-master/test/Data/Vectors/aes-cbc.test-vectors
+
+[TEST] 1
+key=2b7e151628aed2a6abf7158809cf4f3c
+iv=000102030405060708090A0B0C0D0E0F
+plain=6bc1bee22e409f96e93d7e117393172a
+cipher=7649abac8119b246cee98e9b12e9197d
+
+[TEST] 2
+key=2b7e151628aed2a6abf7158809cf4f3c
+iv=7649ABAC8119B246CEE98E9B12E9197D
+plain=ae2d8a571e03ac9c9eb76fac45af8e51 
+cipher=5086cb9b507219ee95db113a917678b2
+
+[TEST] 3
+key=2b7e151628aed2a6abf7158809cf4f3c
+iv=5086cb9b507219ee95db113a917678b2
+plain=30c81c46a35ce411e5fbc1191a0a52ef 
+cipher=73bed6b8e3c1743b7116e69e22229516
+
+[TEST] 4
+key=2b7e151628aed2a6abf7158809cf4f3c
+iv=73bed6b8e3c1743b7116e69e22229516
+plain=f69f2445df4f9b17ad2b417be66c3710 
+cipher=3ff1caa1681fac09120eca307586e1a7

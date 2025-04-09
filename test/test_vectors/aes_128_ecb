@@ -1,0 +1,22 @@
+# AES-128 ECB test vectors
+# refer to https://github.com/ircmaxell/quality-checker/blob/master/tmp/gh_18/PHP-PasswordLib-master/test/Data/Vectors/aes-ecb.test-vectors
+
+[TEST] 1
+key=2b7e151628aed2a6abf7158809cf4f3c
+plain=6bc1bee22e409f96e93d7e117393172a
+cipher=3ad77bb40d7a3660a89ecaf32466ef97
+
+[TEST] 2
+key=2b7e151628aed2a6abf7158809cf4f3c
+plain=ae2d8a571e03ac9c9eb76fac45af8e51
+cipher=f5d3d58503b9699de785895a96fdbaaf
+
+[TEST] 3
+key=2b7e151628aed2a6abf7158809cf4f3c
+plain=30c81c46a35ce411e5fbc1191a0a52ef
+cipher=43b1cd7f598ece23881b00e3ed030688
+
+[TEST] 4
+key=2b7e151628aed2a6abf7158809cf4f3c
+plain=f69f2445df4f9b17ad2b417be66c3710
+cipher=7b0c785e27e8ad3f8223207104725dd4

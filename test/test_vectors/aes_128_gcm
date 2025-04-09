@@ -1,0 +1,34 @@
+# AES-128 GCM test vectors
+# refer to https://github.com/google/boringssl/blob/main/crypto/cipher/test/aes_128_gcm_tests.txt
+
+[TEST] 1
+key=3881e7be1bb3bbcaff20bdb78e5d1b67
+iv=dcf5b7ae2d7552e2297fcfa9
+aad=c60c64bbf7
+tag=ff4c4f1d92b0abb1d0820833d9eb83c7
+plain=0a2714aa7d
+cipher=5626f96ecb
+
+[TEST] 2
+key=ea4f6f3c2fed2b9dd9708c2e721ae00f
+iv=f975809ddb5172382745634f
+aad=5c65d4f261d2c54ffe6a
+tag=70259cddfe8f9a15a5c5eb485af578fb
+plain=8d6c08446cb10d9a2075
+cipher=0f51f7a83c5b5aa796b9
+
+[TEST] 3
+key=cdbc90e60aab7905bdffdfd8d13c0138
+iv=9d987184c4b4e873d4774931
+aad=7dc79f38e1df9383e5d3a1378b56ef
+tag=7525125e650d397d0e176fa21315f09a
+plain=cb75a0f9134c579bebbd27fe4a3011
+cipher=c6a899758b6c11208241627c8a0096
+
+[TEST] 4
+key=819bc8d2f41996baca697441f982ad37
+iv=08b7a15f388fafb16711ce19
+aad=277c372784559784b0e047c6f8b7e9efb6f7491e
+tag=52e2d2f153a4235eb6fac87ff6b96926
+plain=9b1ddd177d2842a701b794450e3c81f151f195a1
+cipher=de9b9c8fe09f705f558c62dc6d40b75e3aa625b6

@@ -196,24 +196,14 @@ enum aes_error aes_init_j0(struct aes_ctx *ctx, uint8_t *iv, uint64_t iv_len)
                                 be_set_u64(tmp_b + 8, iv_len * 8);
                         }
                         ghash(ctx->ghash_h, tmp_b, 16, tmp_j0);
-                        
+
                 } else {
                         // alway use two blocks
                         memcpy(tmp_b, iv, iv_len);
                         memset(tmp_b + iv_len, 0x00, (16 - iv_len));
-                        printf("tmp_b: \n");
-                        for (int i = 0; i < 16; ++i) {
-                                printf("0x%02x ", tmp_b[i]);
-                        }
-                        printf("\n");
                         ghash(ctx->ghash_h, tmp_b, 16, tmp_j0);
                         memset(tmp_b, 0x00, 8);
                         be_set_u64(tmp_b + 8, iv_len * 8);
-                        printf("tmp_b: \n");
-                        for (int i = 0; i < 16; ++i) {
-                                printf("0x%02x ", tmp_b[i]);
-                        }
-                        printf("\n");
                         ghash(ctx->ghash_h, tmp_b, 16, tmp_j0);
                 }
 
@@ -387,8 +377,8 @@ enum aes_error aes_ecb_decryption(struct aes_ctx *ctx)
         for (uint64_t b = 0; b < n_block; ++b) {
                 uint8_t *block = tmp_output + (b * N_AES_STATE_SIZE);
 
-                aes_step_add_round_key(block, (ctx->round_key +
-                                               (N_AES_ROUND * N_AES_STATE_SIZE)));
+                aes_step_add_round_key(
+                    block, (ctx->round_key + (N_AES_ROUND * N_AES_STATE_SIZE)));
 
                 for (uint8_t r = N_AES_ROUND; r > 0; --r) {
                         uint8_t round_k = r - 1;
@@ -528,8 +518,8 @@ enum aes_error aes_cbc_decryption(struct aes_ctx *ctx)
                         tmp_iv = tmp_output + ((b - 1) * N_AES_STATE_SIZE);
                 }
 
-                aes_step_add_round_key(block, (ctx->round_key +
-                                               (N_AES_ROUND * N_AES_STATE_SIZE)));
+                aes_step_add_round_key(
+                    block, (ctx->round_key + (N_AES_ROUND * N_AES_STATE_SIZE)));
 
                 for (uint8_t r = N_AES_ROUND; r > 0; --r) {
                         uint8_t round_k = r - 1;
@@ -749,18 +739,6 @@ enum aes_error aes_gcm_decryption(struct aes_ctx *ctx)
 
         if (ctx->tag_len <= 16 && ctx->tag_len >= 4) {
                 if (memcmp(ctx->tag, tmp_tag, ctx->tag_len) != 0) {
-                        // terminate decryption for illegal tag
-                        printf("tag: \n");
-                        for (int i = 0; i < 16; ++i) {
-                                printf("0x%02x ", ctx->tag[i]);
-                        }
-                        printf("\n");
-                        printf("tmp_tag: \n");
-                        for (int i = 0; i < 16; ++i) {
-                                printf("0x%02x ", tmp_tag[i]);
-                        }
-                        printf("\n");
-
                         return AES_ILLEGAL_TAG;
                 }
         } else {
