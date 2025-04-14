@@ -2,23 +2,23 @@
 #include "aes.h"
 
 static void aes_key_expansion(uint8_t *round_key, const uint8_t *key);
-#if defined(TYPE_AES_CBC)
+#if defined(MODE_AES_CBC)
 static void aes_step_cbc_pre_block_xor(uint8_t *state, uint8_t *vector);
 #endif
-#if defined(TYPE_AES_CTR) || defined(TYPE_AES_GCM)
+#if defined(MODE_AES_CTR) || defined(MODE_AES_GCM)
 static void aes_step_ctr_key_stream_xor(uint8_t *state, uint8_t *key_stream);
 #endif
 static void aes_step_sub_bytes(uint8_t *state);
 static void aes_step_shift_rows(uint8_t *state);
 static void aes_step_mix_columns(uint8_t *state);
 static void aes_step_add_round_key(uint8_t *state, uint8_t *round_key);
-#if (!defined(TYPE_AES_CTR) && !defined(TYPE_AES_GCM))
+#if (!defined(MODE_AES_CTR) && !defined(MODE_AES_GCM))
 static void aes_step_inv_sub_bytes(uint8_t *state);
 static void aes_step_inv_shift_rows(uint8_t *state);
 static void aes_step_inv_mix_columns(uint8_t *state);
 #endif
 static uint8_t gf8_multiply(uint8_t a, uint8_t b);
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
 static void be_set_u64(uint8_t *x, uint64_t val);
 static void be_set_u32(uint8_t *x, uint32_t val);
 static inline uint32_t be_get_u32(const uint8_t *x);
@@ -26,7 +26,7 @@ static void gf128_right_shift(uint8_t *v);
 static void gf128_multiply(uint8_t *x, uint8_t *y, uint8_t *z);
 static void ghash(uint8_t *h, uint8_t *data, size_t data_len, uint8_t *y);
 #endif
-#if defined(TYPE_AES_GCM) || defined(TYPE_AES_CTR)
+#if defined(MODE_AES_GCM) || defined(MODE_AES_CTR)
 static void increment_uint128(uint8_t *bytes);
 #endif
 
@@ -43,10 +43,10 @@ enum aes_error aes_context_release(struct aes_ctx *ctx)
 
         memset(ctx->key, 0x00, N_AES_KEY_SIZE);
         memset(ctx->round_key, 0x00, N_AES_KEY_EXPAND_SIZE);
-#if defined(TYPE_AES_CBC)
+#if defined(MODE_AES_CBC)
         memset(ctx->init_vector, 0x00, N_AES_KEY_SIZE);
 #endif
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
         if (ctx->aad_len > 0) {
                 free(ctx->aad);
                 ctx->aad_len = 0;
@@ -54,7 +54,7 @@ enum aes_error aes_context_release(struct aes_ctx *ctx)
 #endif
         free(ctx->output);
         ctx->output_len = 0;
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
         memset(ctx->tag, 0x00, N_AES_TAG_SIZE);
         ctx->tag_len = 0;
 #endif
@@ -72,7 +72,7 @@ void aes_init_key(struct aes_ctx *ctx, uint8_t *key)
         aes_key_expansion(ctx->round_key, ctx->key);
 }
 
-#if defined(TYPE_AES_CBC)
+#if defined(MODE_AES_CBC)
 /**
  * @brief       initialize AES-CBC iv
  * @param       *ctx, *iv: iv must point to 16-byte memory
@@ -84,7 +84,7 @@ void aes_init_iv(struct aes_ctx *ctx, uint8_t *iv)
 }
 #endif
 
-#if defined(TYPE_AES_CTR)
+#if defined(MODE_AES_CTR)
 /**
  * @brief       initialize AES-CTR Nonce
  * @param       *ctx, *nonce: nonce must point to 16-byte memory
@@ -96,7 +96,7 @@ void aes_init_nonce(struct aes_ctx *ctx, uint8_t *nonce)
 }
 #endif
 
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
 /**
  * @brief       initialize AES-GCM AAD
  * @param       *ctx, *aad, aad_len: aad must point to valid memory
@@ -274,9 +274,9 @@ static enum aes_error aes_generate_gmac(struct aes_ctx *ctx, uint8_t *cipher,
 
         return AES_SUCCESS;
 }
-#endif // TYPE_AES_GCM
+#endif // MODE_AES_GCM
 
-#if defined(TYPE_AES_ECB) || defined(TYPE_AES_GCM)
+#if defined(MODE_AES_ECB) || defined(MODE_AES_GCM)
 /**
  * @brief       AES-ECB encryption
  * @param       *ctx:   ctx must be a valid object
@@ -339,9 +339,9 @@ enum aes_error aes_ecb_encryption(struct aes_ctx *ctx)
 
         return AES_SUCCESS;
 }
-#endif // TYPE_AES_ECB || TYPE_AES_GCM
+#endif // MODE_AES_ECB || MODE_AES_GCM
 
-#if defined(TYPE_AES_ECB)
+#if defined(MODE_AES_ECB)
 /**
  * @brief       AES-ECB decryption
  * @param       *ctx:   ctx must be a valid object
@@ -402,9 +402,9 @@ enum aes_error aes_ecb_decryption(struct aes_ctx *ctx)
 
         return AES_SUCCESS;
 }
-#endif // TYPE_AES_ECB
+#endif // MODE_AES_ECB
 
-#if defined(TYPE_AES_CBC)
+#if defined(MODE_AES_CBC)
 /**
  * @brief       AES-CBC encryption
  * @param       *ctx:   ctx must be a valid object
@@ -544,9 +544,9 @@ enum aes_error aes_cbc_decryption(struct aes_ctx *ctx)
 
         return AES_SUCCESS;
 }
-#endif // TYPE_AES_CBC
+#endif // MODE_AES_CBC
 
-#if defined(TYPE_AES_CTR)
+#if defined(MODE_AES_CTR)
 /**
  * @brief       AES-CTR encryption
  * @param       *ctx:   ctx must be a valid object
@@ -620,9 +620,9 @@ enum aes_error aes_ctr_encryption(struct aes_ctx *ctx)
 
         return AES_SUCCESS;
 }
-#endif // TYPE_AES_CTR
+#endif // MODE_AES_CTR
 
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
 /**
  * @brief       AES-GCM encryption
  * @param       *ctx:   ctx must be a valid object
@@ -800,7 +800,7 @@ enum aes_error aes_gcm_decryption(struct aes_ctx *ctx)
 
         return AES_SUCCESS;
 }
-#endif // TYPE_AES_GCM
+#endif // MODE_AES_GCM
 
 /**
  * @brief       Expand AES key into round_key
@@ -837,7 +837,7 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
 
                         tmp[0] ^= rijndael_r_con[(word_idx / N_AES_KEY_SIZE)];
                 }
-#if defined(ALGO_AES_256)
+#if defined(TYPE_AES_256)
                 else if (word_idx % N_AES_KEY_SIZE == (N_AES_KEY_SIZE / 2)) {
                         tmp[0] = rijndael_s_box[tmp[0]];
                         tmp[1] = rijndael_s_box[tmp[1]];
@@ -854,7 +854,7 @@ static void aes_key_expansion(uint8_t *round_key, const uint8_t *key)
         }
 }
 
-#if defined(TYPE_AES_CBC)
+#if defined(MODE_AES_CBC)
 static void aes_step_cbc_pre_block_xor(uint8_t *state, uint8_t *vector)
 {
         uint8_t i;
@@ -862,9 +862,9 @@ static void aes_step_cbc_pre_block_xor(uint8_t *state, uint8_t *vector)
                 state[i] ^= vector[i];
         }
 }
-#endif // TYPE_AES_CBC
+#endif // MODE_AES_CBC
 
-#if defined(TYPE_AES_CTR) || defined(TYPE_AES_GCM)
+#if defined(MODE_AES_CTR) || defined(MODE_AES_GCM)
 static void aes_step_ctr_key_stream_xor(uint8_t *state, uint8_t *key_stream)
 {
         uint8_t i;
@@ -872,7 +872,7 @@ static void aes_step_ctr_key_stream_xor(uint8_t *state, uint8_t *key_stream)
                 state[i] ^= key_stream[i];
         }
 }
-#endif // TYPE_AES_CTR || TYPE_AES_GCM
+#endif // MODE_AES_CTR || MODE_AES_GCM
 
 static void aes_step_sub_bytes(uint8_t *state)
 {
@@ -945,7 +945,7 @@ static void aes_step_add_round_key(uint8_t *state, uint8_t *round_key)
         }
 }
 
-#if (!defined(TYPE_AES_CTR) && !defined(TYPE_AES_GCM))
+#if (!defined(MODE_AES_CTR) && !defined(MODE_AES_GCM))
 static void aes_step_inv_sub_bytes(uint8_t *state)
 {
         uint8_t i;
@@ -1010,7 +1010,7 @@ static void aes_step_inv_mix_columns(uint8_t *state)
                     gf8_multiply(0x09, tmp[2]) ^ gf8_multiply(0x0e, tmp[3]);
         }
 }
-#endif // !TYPE_AES_CTR
+#endif // !MODE_AES_CTR
 
 // Galois Field multiply
 static uint8_t gf8_multiply(uint8_t a, uint8_t b)
@@ -1028,7 +1028,7 @@ static uint8_t gf8_multiply(uint8_t a, uint8_t b)
         return res;
 }
 
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
 
 static void be_set_u64(uint8_t *x, uint64_t val)
 {
@@ -1131,8 +1131,8 @@ static void ghash(uint8_t *h, uint8_t *data, size_t data_len, uint8_t *y)
                 memcpy(y, tmp, 16);
         }
 }
-#endif // TYPE_AES_GCM
-#if defined(TYPE_AES_GCM) || defined(TYPE_AES_CTR)
+#endif // MODE_AES_GCM
+#if defined(MODE_AES_GCM) || defined(MODE_AES_CTR)
 static void increment_uint128(uint8_t *bytes)
 {
         uint8_t carry = 1;

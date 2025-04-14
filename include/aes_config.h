@@ -13,15 +13,15 @@
 #define N_AES_NONCE_NIST 12
 #define N_AES_NONCE_SIM 16
 
-#if defined(ALGO_AES_128)
+#if defined(TYPE_AES_128)
 #define N_AES_KEY_SIZE 16
 #define N_AES_ROUND 10
 #define N_AES_KEY_EXPAND_SIZE 176
-#elif defined(ALGO_AES_192)
+#elif defined(TYPE_AES_192)
 #define N_AES_KEY_SIZE 24
 #define N_AES_ROUND 12
 #define N_AES_KEY_EXPAND_SIZE 208
-#elif defined(ALGO_AES_256)
+#elif defined(TYPE_AES_256)
 #define N_AES_KEY_SIZE 32
 #define N_AES_ROUND 14
 #define N_AES_KEY_EXPAND_SIZE 240

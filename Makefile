@@ -5,15 +5,15 @@ BUILD_ERROR   = $(BOLD)$(RED)$(CROSSMARK)$(RESET)
 
 # choose AES bits and mode
 # if not specified, enable AES-128 ECB in default
-ALGO ?= 128
+TYPE ?= 128
 MODE ?= ECB
 CONFIG_FILE := config
 
-SUPPORTED_ALGOS := 128 192 256
+SUPPORTED_TYPES := 128 192 256
 SUPPORTED_MODES := ECB CBC CTR GCM
 
-ifeq ($(filter $(ALGO), $(SUPPORTED_ALGOS)),)
-$(error ALGO must be one of: $(SUPPORTED_ALGOS))
+ifeq ($(filter $(TYPE), $(SUPPORTED_TYPES)),)
+$(error TYPE must be one of: $(SUPPORTED_TYPES))
 endif
 
 MODE_UPPER := $(shell echo $(MODE) | tr a-z A-Z)
@@ -21,7 +21,7 @@ ifeq ($(filter $(MODE_UPPER), $(SUPPORTED_MODES)),)
 $(error MODE must be one of: $(SUPPORTED_MODES))
 endif
 
-CFLAGS += -DALGO_AES_$(ALGO) -DTYPE_AES_$(MODE_UPPER)
+CFLAGS += -DTYPE_AES_$(TYPE) -DMODE_AES_$(MODE_UPPER)
 
 CC = gcc
 CFLAGS += -Wall -Wextra -g -O2 -MMD -fsanitize=address
@@ -89,7 +89,7 @@ clean:
 FORCE:
 
 $(CONFIG_FILE): FORCE
-	@echo "$(ALGO)-$(MODE)" > $(CONFIG_FILE).tmp
+	@echo "$(TYPE)-$(MODE)" > $(CONFIG_FILE).tmp
 	@if ! cmp -s $(CONFIG_FILE).tmp $(CONFIG_FILE); then \
 		mv $(CONFIG_FILE).tmp $(CONFIG_FILE); \
 		echo "Config updated";\

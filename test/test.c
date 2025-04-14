@@ -61,12 +61,12 @@ static void text_case_release(struct test_case *test)
         test->plain_len = 0;
         test->cipher = NULL;
         test->cipher_len = 0;
-#if !defined(TYPE_AES_ECB)
+#if !defined(MODE_AES_ECB)
         free(test->nonce);
         test->nonce = NULL;
         test->nonce_len = 0;
 #endif
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
         free(test->aad);
         test->aad = NULL;
         test->aad_len = 0;
@@ -76,18 +76,18 @@ static void text_case_release(struct test_case *test)
 #endif
 }
 
-#if defined(TYPE_AES_ECB)
+#if defined(MODE_AES_ECB)
 static void aes_test_ecb(void)
 {
-#if defined(ALGO_AES_128)
+#if defined(TYPE_AES_128)
         printf("=== AES-128 ECB test ===\n");
         char *vector_file = "test/test_vectors/aes_128_ecb";
 #endif
-#if defined(ALGO_AES_192)
+#if defined(TYPE_AES_192)
         printf("=== AES-192 ECB test ===\n");
         char *vector_file = "test/test_vectors/aes_192_ecb";
 #endif
-#if defined(ALGO_AES_256)
+#if defined(TYPE_AES_256)
         printf("=== AES-256 ECB test ===\n");
         char *vector_file = "test/test_vectors/aes_256_ecb";
 #endif
@@ -233,20 +233,20 @@ static void aes_test_ecb(void)
 
         printf("\n***** PASS : %d / %d *****\n", pass_case, test_idx);
 }
-#endif // TYPE_AES_ECB
+#endif // MODE_AES_ECB
 
-#if defined(TYPE_AES_CBC)
+#if defined(MODE_AES_CBC)
 static void aes_test_cbc(void)
 {
-#if defined(ALGO_AES_128)
+#if defined(TYPE_AES_128)
         printf("=== AES-128 CBC test ===\n");
         char *vector_file = "test/test_vectors/aes_128_cbc";
 #endif
-#if defined(ALGO_AES_192)
+#if defined(TYPE_AES_192)
         printf("=== AES-192 CBC test ===\n");
         char *vector_file = "test/test_vectors/aes_192_cbc";
 #endif
-#if defined(ALGO_AES_256)
+#if defined(TYPE_AES_256)
         printf("=== AES-256 CBC test ===\n");
         char *vector_file = "test/test_vectors/aes_256_cbc";
 #endif
@@ -400,20 +400,20 @@ static void aes_test_cbc(void)
 
         printf("\n***** PASS : %d / %d *****\n", pass_case, test_idx);
 }
-#endif // TYPE_AES_CBC
+#endif // MODE_AES_CBC
 
-#if defined(TYPE_AES_CTR)
+#if defined(MODE_AES_CTR)
 static void aes_test_ctr(void)
 {
-#if defined(ALGO_AES_128)
+#if defined(TYPE_AES_128)
         printf("=== AES-128 CTR test ===\n");
         char *vector_file = "test/test_vectors/aes_128_ctr";
 #endif
-#if defined(ALGO_AES_192)
+#if defined(TYPE_AES_192)
         printf("=== AES-192 CTR test ===\n");
         char *vector_file = "test/test_vectors/aes_192_ctr";
 #endif
-#if defined(ALGO_AES_256)
+#if defined(TYPE_AES_256)
         printf("=== AES-256 CTR test ===\n");
         char *vector_file = "test/test_vectors/aes_256_ctr";
 #endif
@@ -565,20 +565,20 @@ static void aes_test_ctr(void)
 
         printf("\n***** PASS : %d / %d *****\n", pass_case, test_idx);
 }
-#endif // TYPE_AES_CTR
+#endif // MODE_AES_CTR
 
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
 static void aes_test_gcm(void)
 {
-#if defined(ALGO_AES_128)
+#if defined(TYPE_AES_128)
         printf("=== AES-128 GCM test ===\n");
         char *vector_file = "test/test_vectors/aes_128_gcm";
 #endif
-#if defined(ALGO_AES_192)
+#if defined(TYPE_AES_192)
         printf("=== AES-192 GCM test ===\n");
         char *vector_file = "test/test_vectors/aes_192_gcm";
 #endif
-#if defined(ALGO_AES_256)
+#if defined(TYPE_AES_256)
         printf("=== AES-256 GCM test ===\n");
         char *vector_file = "test/test_vectors/aes_256_gcm";
 #endif
@@ -764,20 +764,20 @@ static void aes_test_gcm(void)
 
         printf("\n***** PASS : %d / %d *****\n", pass_case, test_idx);
 }
-#endif // TYPE_AES_GCM
+#endif // MODE_AES_GCM
 
 int main(void)
 {
-#if defined(TYPE_AES_ECB)
+#if defined(MODE_AES_ECB)
         aes_test_ecb();
 #endif
-#if defined(TYPE_AES_CBC)
+#if defined(MODE_AES_CBC)
         aes_test_cbc();
 #endif
-#if defined(TYPE_AES_CTR)
+#if defined(MODE_AES_CTR)
         aes_test_ctr();
 #endif
-#if defined(TYPE_AES_GCM)
+#if defined(MODE_AES_GCM)
         aes_test_gcm();
 #endif
         return 0;
