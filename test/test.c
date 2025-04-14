@@ -2,22 +2,10 @@
 #include "aes.h"
 #include <stdio.h>
 
-// #define N_ECB_TEST 4
-// #define MAX_SIZE_ECB_TEST 16
-
-// #define N_CBC_TEST 4
-// #define MAX_SIZE_CBC_TEST 16
-
-// #define N_CTR_TEST 4
-// #define MAX_SIZE_CTR_TEST 16
-
-// #define N_GCM_TEST 4
-// #define MAX_SIZE_GCM_TEST 256
-
 #define MAX_BUFFER_LEN 256
 #define MAX_STR_LEN 2048
 
-#define DBG_LOG_ENABLED 1
+#define DBG_LOG_ENABLED 0
 
 struct test_case {
         uint8_t *key;
