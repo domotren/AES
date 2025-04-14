@@ -21,15 +21,16 @@ make -j
 - Default configuration: **AES-128 ECB**
 
 ### Custom Configuration
-Override 'ALGO' (key size) and 'MODE' (operation mode):
+Override 'TYPE' (key size) and 'MODE' (operation mode):
 '''bash
-make -j ALGO=256 MODE=GCM       # Example: AES-256 in GCM mode
+make -j TYPE=256 MODE=GCM       # Example: AES-256 in GCM mode
 '''
 **Valid options**
-- 'ALGO': '128', '192', '256'
+- 'TYPE': '128', '192', '256'
 - 'MODE': 'ECB', 'CBC', 'CTR', 'GCM'
 
 ### Outputs
+- Main executable: 'build/main/main_test' (custom text)
 - Test executable: 'build/test/aes_test' (validates test vectors)
 
 ---
@@ -38,8 +39,8 @@ make -j ALGO=256 MODE=GCM       # Example: AES-256 in GCM mode
 
 ### Integration Guide
 This implementation is designed for embedded systems with **single-mode operation**. To support multiple modes:
-1. Modify mode switches in code via 'ALGO_AES_' and 'TYPE_AES_' macros.
-2. Reference 'test/test.c' for API usage examples across modes.
+1. Modify mode switches in code via 'TYPE_AES_' and 'MODE_AES_' macros.
+2. Reference 'main/main.c' and 'test/test.c' for API usage examples across modes.
 
 ---
 
